@@ -12,7 +12,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     PORT=10000 \
     PACKFLOW_DB_PATH=/app/data/packflow.db \
-    PACKFLOW_FRONTEND_DIR=/app/frontend
+    PACKFLOW_FRONTEND_DIR=/app/frontend \
+    PACKFLOW_SEED_REFERENCE_CATALOG=true
 WORKDIR /app/backend
 COPY backend/requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt \

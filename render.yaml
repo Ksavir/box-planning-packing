@@ -10,5 +10,7 @@ services:
     dockerContext: .
     healthCheckPath: /api/health
     envVars:
+      - key: PACKFLOW_SEED_REFERENCE_CATALOG
+        value: "true"
       - key: PACKFLOW_DB_PATH
         value: /app/data/packflow.db

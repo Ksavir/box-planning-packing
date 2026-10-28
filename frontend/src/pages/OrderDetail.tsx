@@ -81,7 +81,7 @@ export function OrderDetail({ order, onBack, onRefresh, onSaved, notify }: Detai
       if (analyze) window.scrollTo({ top: 0, behavior: 'smooth' })
       notify(analyze ? 'Packing plan calculated.' : 'Order validated and saved.')
     } catch (error) {
-      notify(error instanceof Error ? error.message : 'The order could not be saved.')
+      notify(error instanceof Error ? error.message : 'The order could not be saved.', true)
     } finally { setBusy(false) }
   }
 
@@ -110,7 +110,7 @@ export function OrderDetail({ order, onBack, onRefresh, onSaved, notify }: Detai
   const recalculate = async () => {
     setBusy(true)
     try { await api.analyzeOrder(order.id); await onRefresh(); notify('Plan recalculated using the current catalog.') }
-    catch (error) { notify(error instanceof Error ? error.message : 'The plan could not be recalculated.') }
+    catch (error) { notify(error instanceof Error ? error.message : 'The plan could not be recalculated.', true) }
     finally { setBusy(false) }
   }
 

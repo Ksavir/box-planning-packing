@@ -1,0 +1,225 @@
+{
+  "source": "Reference catalog previously imported from Volume - weight calculator.xlsx; excludes orders, prices and customer data.",
+  "limitations": "Prototype product dimensions follow the existing reference importer; imported boxes use the existing provisional 25 kg capacity.",
+  "products": [
+    {
+      "sku": "PRODUCT-E9FC50548F",
+      "name": "Sachet filled - NEW",
+      "length_cm": 10.0,
+      "width_cm": 7.0,
+      "height_cm": 0.5,
+      "weight_kg": 0.0022,
+      "rotation_allowed": 1,
+      "fragile": 0
+    },
+    {
+      "sku": "PRODUCT-26EA7844A8",
+      "name": "Sachet packed",
+      "length_cm": 10.0,
+      "width_cm": 7.0,
+      "height_cm": 0.5,
+      "weight_kg": 0.003,
+      "rotation_allowed": 1,
+      "fragile": 0
+    },
+    {
+      "sku": "PRODUCT-0EEA5861A5",
+      "name": "10 ml",
+      "length_cm": 2.5,
+      "width_cm": 2.5,
+      "height_cm": 8.0,
+      "weight_kg": 0.0245,
+      "rotation_allowed": 1,
+      "fragile": 0
+    },
+    {
+      "sku": "PRODUCT-0C10EF69EB",
+      "name": "50 ml",
+      "length_cm": 4.0,
+      "width_cm": 4.0,
+      "height_cm": 12.0,
+      "weight_kg": 0.085,
+      "rotation_allowed": 1,
+      "fragile": 0
+    },
+    {
+      "sku": "PRODUCT-644D971311",
+      "name": "50 ml no box no instructions",
+      "length_cm": 4.0,
+      "width_cm": 4.0,
+      "height_cm": 12.0,
+      "weight_kg": 0.08,
+      "rotation_allowed": 1,
+      "fragile": 0
+    },
+    {
+      "sku": "PRODUCT-D597DDFFDD",
+      "name": "120 ml",
+      "length_cm": 5.0,
+      "width_cm": 5.0,
+      "height_cm": 16.0,
+      "weight_kg": 0.175,
+      "rotation_allowed": 1,
+      "fragile": 0
+    },
+    {
+      "sku": "PRODUCT-557F350BE5",
+      "name": "glide bottle 250ml (6x20cm)",
+      "length_cm": 6.0,
+      "width_cm": 6.0,
+      "height_cm": 20.0,
+      "weight_kg": 0.3,
+      "rotation_allowed": 1,
+      "fragile": 0
+    },
+    {
+      "sku": "PRODUCT-C8C86E5B24",
+      "name": "ProKit",
+      "length_cm": 20.0,
+      "width_cm": 15.0,
+      "height_cm": 6.0,
+      "weight_kg": 0.43,
+      "rotation_allowed": 1,
+      "fragile": 0
+    },
+    {
+      "sku": "PRODUCT-212A7B4076",
+      "name": "Glide kit",
+      "length_cm": 20.0,
+      "width_cm": 15.0,
+      "height_cm": 10.0,
+      "weight_kg": 0.63,
+      "rotation_allowed": 1,
+      "fragile": 0
+    },
+    {
+      "sku": "PRODUCT-E5640C99CB",
+      "name": "Glide roller",
+      "length_cm": 20.0,
+      "width_cm": 5.0,
+      "height_cm": 5.0,
+      "weight_kg": 0.22,
+      "rotation_allowed": 1,
+      "fragile": 0
+    }
+  ],
+  "boxes": [
+    {
+      "code": "12",
+      "name": "12\"",
+      "length_cm": 30.0,
+      "width_cm": 20.0,
+      "height_cm": 10.0,
+      "empty_weight_kg": 0.11,
+      "max_weight_kg": 25.0
+    },
+    {
+      "code": "25",
+      "name": "25\"",
+      "length_cm": 20.0,
+      "width_cm": 20.0,
+      "height_cm": 20.0,
+      "empty_weight_kg": 0.12,
+      "max_weight_kg": 25.0
+    },
+    {
+      "code": "50-FINISHED",
+      "name": "50\" finished",
+      "length_cm": 40.0,
+      "width_cm": 20.0,
+      "height_cm": 20.0,
+      "empty_weight_kg": 0.28,
+      "max_weight_kg": 25.0
+    },
+    {
+      "code": "50-NEW",
+      "name": "50\" New",
+      "length_cm": 35.0,
+      "width_cm": 25.0,
+      "height_cm": 16.0,
+      "empty_weight_kg": 0.285,
+      "max_weight_kg": 25.0
+    },
+    {
+      "code": "60-SINGLE-COATER",
+      "name": "60\" Single Coater",
+      "length_cm": 38.0,
+      "width_cm": 35.0,
+      "height_cm": 14.0,
+      "empty_weight_kg": 0.45,
+      "max_weight_kg": 25.0
+    },
+    {
+      "code": "100",
+      "name": "100\"",
+      "length_cm": 40.0,
+      "width_cm": 20.0,
+      "height_cm": 42.0,
+      "empty_weight_kg": 0.472,
+      "max_weight_kg": 25.0
+    },
+    {
+      "code": "200-NEW",
+      "name": "200\" New",
+      "length_cm": 40.0,
+      "width_cm": 40.0,
+      "height_cm": 40.0,
+      "empty_weight_kg": 0.74,
+      "max_weight_kg": 25.0
+    },
+    {
+      "code": "PROKITS-X10",
+      "name": "prokits x10",
+      "length_cm": 33.0,
+      "width_cm": 28.0,
+      "height_cm": 24.0,
+      "empty_weight_kg": 0.43,
+      "max_weight_kg": 25.0
+    },
+    {
+      "code": "COATERS-X5",
+      "name": "Coaters x5",
+      "length_cm": 65.5,
+      "width_cm": 39.0,
+      "height_cm": 36.0,
+      "empty_weight_kg": 0.98,
+      "max_weight_kg": 25.0
+    },
+    {
+      "code": "GLIDE-KITS-X4",
+      "name": "Glide Kits x4",
+      "length_cm": 35.0,
+      "width_cm": 25.0,
+      "height_cm": 15.0,
+      "empty_weight_kg": 0.26,
+      "max_weight_kg": 25.0
+    },
+    {
+      "code": "GLIDE-KITS-X5",
+      "name": "Glide Kits x5",
+      "length_cm": 40.0,
+      "width_cm": 25.5,
+      "height_cm": 15.0,
+      "empty_weight_kg": 0.2,
+      "max_weight_kg": 25.0
+    },
+    {
+      "code": "GLIDE-KITS-X10",
+      "name": "Glide Kits x10",
+      "length_cm": 50.0,
+      "width_cm": 40.0,
+      "height_cm": 15.0,
+      "empty_weight_kg": 0.38,
+      "max_weight_kg": 25.0
+    },
+    {
+      "code": "GLIDE-KITS-X12",
+      "name": "Glide Kits x12",
+      "length_cm": 40.0,
+      "width_cm": 30.0,
+      "height_cm": 25.0,
+      "empty_weight_kg": 0.3,
+      "max_weight_kg": 25.0
+    }
+  ]
+}

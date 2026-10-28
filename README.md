@@ -1,17 +1,17 @@
 # PackFlow MVP
 
-PackFlow convierte órdenes de compra recibidas como PDF, correo, llamada o mensaje en planes de empaque verificables. El MVP extrae los datos de documentos conocidos, permite registrar una orden manualmente, relaciona cada producto por su nombre o descripción con el catálogo y calcula una distribución tridimensional que respeta dimensiones y peso.
+PackFlow turns purchase orders received as PDFs, emails, calls or messages into verifiable packing plans. The MVP extracts data from known document formats, supports manual order entry, matches each product to the catalog by name or description, and calculates a three-dimensional layout that respects dimensions and weight limits.
 
 ## Stack
 
-- React 19, TypeScript y Vite.
-- FastAPI y Python 3.12.
-- SQLite, sin servicio de base de datos externo.
-- `pypdf` para PDFs con texto y ReportLab para informes PDF.
-- `openpyxl` para los catálogos Excel.
-- Motor 3D con búsqueda acotada de combinaciones de cajas y múltiples ordenaciones y particiones guillotina.
+- React 19, TypeScript and Vite.
+- FastAPI and Python 3.12.
+- SQLite, with no external database service.
+- `pypdf` for text-based PDFs and ReportLab for PDF reports.
+- `openpyxl` for Excel catalogs.
+- A 3D packing engine with a bounded search over box combinations, multiple item orderings and guillotine partitions.
 
-## Ejecutar en desarrollo
+## Local development
 
 ### API
 
@@ -22,7 +22,7 @@ python3 -m venv .venv
 .venv/bin/uvicorn app.main:app --reload --port 8001
 ```
 
-La documentación interactiva queda disponible en `http://127.0.0.1:8001/docs`.
+Interactive API documentation is available at `http://127.0.0.1:8001/docs`.
 
 ### Web
 
@@ -32,62 +32,62 @@ npm install
 npm run dev
 ```
 
-Abre `http://127.0.0.1:5173`. Vite redirige las llamadas `/api` al puerto `8001`.
+Open `http://127.0.0.1:5173`. Vite proxies `/api` requests to port `8001`.
 
-## Catálogos Excel
+## Excel catalogs
 
-La primera fila debe contener encabezados. Se aceptan variantes en español e inglés.
+The first row must contain column headers. Both English and Spanish header variants are accepted.
 
-Productos:
+Products:
 
-| Campo | Ejemplos de encabezado |
+| Field | Example headers |
 | --- | --- |
-| Nombre | `nombre`, `descripción`, `name` |
-| Largo | `largo`, `largo cm`, `length` |
-| Ancho | `ancho`, `ancho cm`, `width` |
-| Alto | `alto`, `alto cm`, `height` |
-| Peso | `peso`, `peso kg`, `weight` |
+| Name | `nombre`, `descripción`, `name` |
+| Length | `largo`, `largo cm`, `length` |
+| Width | `ancho`, `ancho cm`, `width` |
+| Height | `alto`, `alto cm`, `height` |
+| Weight | `peso`, `peso kg`, `weight` |
 
-Cajas:
+Boxes:
 
-| Campo | Ejemplos de encabezado |
+| Field | Example headers |
 | --- | --- |
-| Código | `código`, `code`, `caja` |
-| Nombre | `nombre`, `name` |
-| Largo, ancho y alto | `largo`, `ancho`, `alto` |
-| Peso vacío | `peso caja`, `tara`, `empty weight` |
-| Peso máximo | `peso máximo`, `capacidad kg`, `max weight` |
+| Code | `código`, `code`, `caja` |
+| Name | `nombre`, `name` |
+| Length, width and height | `largo`, `ancho`, `alto` |
+| Empty weight | `peso caja`, `tara`, `empty weight` |
+| Maximum weight | `peso máximo`, `capacidad kg`, `max weight` |
 
-Las dimensiones se expresan en centímetros y los pesos en kilogramos. Los productos con el mismo nombre y las cajas con el mismo código se actualizan durante una importación.
+Dimensions are expressed in centimeters and weights in kilograms. Products with the same name and boxes with the same code are updated during an import.
 
-El importador también reconoce directamente el libro operativo `Volume - weight calculator.xlsx`. En una sola carga toma los pesos de `boxes bottles volumes` y los tipos de caja de `box types-what fits`, convierte milímetros a centímetros y gramos a kilogramos, y vuelve a relacionar las órdenes existentes por descripción. Como el archivo no incluye el peso máximo admitido por caja, el MVP utiliza temporalmente 25 kg para los tipos importados.
+The importer also recognizes the operational workbook `Volume - weight calculator.xlsx` directly. In a single upload, it reads weights from `boxes bottles volumes` and box types from `box types-what fits`, converts millimeters to centimeters and grams to kilograms, and rematches existing order items by description. Because the workbook does not include the maximum permitted weight per box, the MVP temporarily uses 25 kg for imported box types.
 
-## Flujo del MVP
+## MVP workflow
 
-1. Abre **Nuevo análisis** y elige **Desde PDF** o **Captura manual**.
-2. En el flujo manual registra la información disponible en el correo o mensaje del cliente.
-3. Revisa comprador, proveedor, número, fechas, condiciones, direcciones y totales.
-4. Confirma descripción, cantidad, precio, impuestos, descuento, fecha solicitada e importe por línea.
-5. Corrige o agrega las líneas que hagan falta.
-6. Pulsa **Validar y calcular**.
-7. Examina la ocupación, el peso, el contenido y las recomendaciones de cada caja.
-8. Exporta el resultado a Excel con hojas de resumen, cajas y contenido.
+1. Open **New order** and choose **From PDF** or **Manual entry**.
+2. For manual entry, enter the information available in the customer's email or message.
+3. Review the customer, supplier, order number, dates, terms, addresses and totals.
+4. Confirm each line item's description, quantity, price, tax, discount, requested date and amount.
+5. Correct or add line items as needed.
+6. Select **Validate and calculate**.
+7. Inspect each box's utilization, weight, contents and recommendations.
+8. Export the result to Excel, with summary, boxes and contents worksheets.
 
-## Información de una orden
+## Order information
 
-La estructura normalizada admite:
+The normalized structure supports:
 
-- Número de orden, comprador, proveedor y origen (`pdf`, `manual` o `email`).
-- Fecha de emisión y fecha solicitada.
-- Moneda, términos, notas, dirección de entrega y facturación.
-- Subtotal, impuestos y total.
-- Por línea: descripción del producto, cantidad, precio unitario, impuesto, descuento, fecha solicitada e importe.
+- Order number, customer, supplier and source (`pdf`, `manual` or `email`).
+- Order date and requested date.
+- Currency, terms, notes, delivery address and billing address.
+- Subtotal, tax and total.
+- Per line item: product description, quantity, unit price, tax, discount, requested date and amount.
 
-Actualmente existen extractores específicos para los formatos de Rev1 Technologies y Hava 3D, además de un extractor genérico conservador.
+Dedicated extractors are currently available for the Rev1 Technologies and Hava 3D formats, alongside a conservative generic extractor.
 
-El repositorio incluye productos, cajas y tres órdenes de demostración. La base se crea en `backend/data/packflow.db` en el primer arranque.
+The repository includes sample products, boxes and three demo orders. The database is created at `backend/data/packflow.db` on the first startup.
 
-## Verificación
+## Verification
 
 ```bash
 cd backend
@@ -97,19 +97,19 @@ cd ../frontend
 npm run build
 ```
 
-## Límites actuales
+## Current limitations
 
-- La extracción automática admite PDFs que contienen texto. Los escaneos requieren integrar OCR en la siguiente iteración.
-- Los formatos Rev1 Technologies y Hava 3D se reconocen de forma específica. Otros diseños usan una extracción conservadora y requieren revisión.
-- El algoritmo busca una solución práctica y reproducible. No garantiza el óptimo matemático global del problema 3D bin packing.
-- No se han implementado autenticación, permisos, almacenamiento externo ni auditoría avanzada.
+- Automatic extraction supports PDFs containing text. Scanned documents require OCR integration in a future iteration.
+- Rev1 Technologies and Hava 3D formats have dedicated extractors. Other layouts use conservative extraction and require review.
+- The algorithm aims for a practical, reproducible solution. It does not guarantee a global mathematical optimum for the 3D bin packing problem.
+- Authentication, permissions, external storage and advanced auditing have not been implemented.
 
-## Nuevas funciones del backend
+## Additional backend features
 
-### Orden desde el texto de un correo
+### Create an order from email text
 
-`POST /api/orders/email` recibe JSON. `text` es obligatorio; `client`, `subject` y
-`order_number` son opcionales. Si falta el número, se genera uno único.
+`POST /api/orders/email` accepts JSON. `text` is required; `client`, `subject` and
+`order_number` are optional. A unique order number is generated if none is provided.
 
 ```json
 {
@@ -118,63 +118,65 @@ npm run build
 }
 ```
 
-Devuelve la orden guardada con `source_type: "email"` y `status: "needs_review"`.
-El ejemplo produce tres líneas de 15 unidades. Reconoce cantidades explícitas como
-`15 pcs`, `7 unidades`, `15 x Producto`, `Producto x 15` y `Producto - 15`.
-No confunde `120ml` con una cantidad, y omite firmas e historial citado.
-Conserva el correo completo en las notas. Los precios quedan en cero (pendientes),
-sin inventar importes, y los productos se relacionan con el catálogo disponible.
-La información restante se completa mediante `PATCH /api/orders/{id}`. Si no puede
-extraer ninguna línea, devuelve 422. No conecta con el buzón ni envía correos.
+Returns the saved order with `source_type: "email"` and `status: "needs_review"`.
+The example produces three line items of 15 units each. The parser recognizes
+explicit quantities such as `15 pcs`, `7 unidades`, `15 x Product`,
+`Product x 15` and `Product - 15`.
+It does not mistake `120ml` for a quantity, and skips signatures and quoted history.
+The full email is preserved in the notes. Prices remain zero (pending), without
+inventing amounts, and products are matched to the available catalog.
+Complete the remaining details through `PATCH /api/orders/{id}`. If no line items
+can be extracted, the endpoint returns 422. It does not connect to a mailbox or send emails.
 
-### Guardar y descargar el análisis final en PDF
+### Save and download the final analysis as a PDF
 
-Después de calcular un plan completo:
+After calculating a complete plan:
 
-- `POST /api/orders/{id}/reports`: guarda una copia PDF en SQLite y devuelve `id`,
-  `plan_id`, `filename`, `created_at` y `download_url`. Repetirlo para el mismo plan
-  devuelve el informe ya guardado.
-- `GET /api/orders/{id}/reports`: lista las copias guardadas.
-- `GET /api/orders/{id}/reports/{report_id}/pdf`: descarga una copia concreta.
-- `GET /api/orders/{id}/export.pdf`: guarda y descarga directamente el plan actual.
+- `POST /api/orders/{id}/reports`: saves a PDF copy in SQLite and returns `id`,
+  `plan_id`, `filename`, `created_at` and `download_url`. Repeating the request for
+  the same plan returns the existing report.
+- `GET /api/orders/{id}/reports`: lists saved copies.
+- `GET /api/orders/{id}/reports/{report_id}/pdf`: downloads a specific copy.
+- `GET /api/orders/{id}/export.pdf`: saves and downloads the current plan directly.
 
-El PDF incluye datos de la orden, resumen, líneas principales y adicionales,
-contenido por caja, posiciones y orientaciones de cada unidad, límites de peso y
-recomendaciones. Identifica los precios pendientes y los totales provisionales.
-Rechaza órdenes sin plan completo con 422. Los informes guardados son copias
-inmutables: una revisión de la orden invalida el plan actual, pero conserva los PDF
-anteriores. La exportación Excel existente sigue en `/api/orders/{id}/export`.
+The PDF includes order details, a summary, original and additional line items,
+contents per box, positions and orientations of each unit, weight limits and
+recommendations. It identifies pending prices and provisional totals.
+Orders without a complete plan are rejected with 422. Saved reports are immutable
+snapshots: reviewing an order invalidates its current plan but preserves earlier
+PDF reports. Excel export remains available at `/api/orders/{id}/export`.
 
-### Selección de cajas y relleno
+### Box selection and additional products
 
-El criterio principal es minimizar el volumen total de las cajas para la orden
-principal, equivalente a minimizar el espacio sobrante. A igual volumen, elige
-menos cajas. Por ello puede preferir varias cajas pequeñas a una grande si dejan
-menos espacio libre en conjunto. Evalúa una búsqueda de hasta 16 estados por nivel
-y varias ordenaciones de productos y órdenes de corte, comprobando dimensiones,
-rotación permitida y peso incluyendo la tara. Es una búsqueda heurística acotada;
-no garantiza el óptimo matemático global.
+The primary objective is to minimize the total box volume for the original order,
+which is equivalent to minimizing unused space. For equal volumes, fewer boxes
+are preferred. The engine may therefore prefer several small boxes over one large
+box if they leave less unused space overall. It evaluates up to 16 search states
+per level, multiple item orderings and partition sequences, checking dimensions,
+permitted rotations and weight, including the empty box weight. This is a bounded
+heuristic search; it does not guarantee a global mathematical optimum.
 
-Las recomendaciones prueban unidades adicionales dentro de los espacios libres
-reales, sin aumentar el tamaño ni el número de cajas ni mover la orden principal.
-También funcionan con precios pendientes. Se ordenan por mayor ocupación prevista
-y, en caso de empate, menor importe adicional. Cada propuesta es una alternativa
-independiente de hasta 100 unidades de un producto de la orden principal;
-no constituye una combinación conjunta óptima. Se recalculan al aplicar una
-propuesta. Intentar agregar más unidades de las que caben devuelve 422 y revierte
-la operación completa, incluidos importes y líneas adicionales.
+Recommendations test additional units within the actual remaining spaces,
+without increasing box sizes or counts or moving the original order's items.
+They also support products with pending prices. Recommendations are ranked by
+highest projected utilization, then by lowest additional amount in the event of a
+tie. Each proposal is an independent alternative of up to 100 units of a product
+from the original order; the proposals do not form a jointly optimal combination.
+They are recalculated after a proposal is applied. Attempting to add more units
+than fit returns 422 and rolls back the entire operation, including amounts and
+additional line items.
 
-La interfaz incluye **New order → From email** para pegar un correo y continuar
-con la revisión y el cálculo. En un plan completo, **Save plan & go home** guarda
-el PDF y vuelve al inicio. **Delete all orders** está disponible en el inicio y en
-la lista de órdenes, con confirmación explícita antes del borrado.
+The interface includes **New order → From email** to paste an email and continue
+with review and calculation. For a complete plan, **Save plan & go home** saves
+the PDF and returns to the overview. **Delete all orders** is available on the
+overview and purchase orders pages, with explicit confirmation before deletion.
 
-`DELETE /api/orders` elimina todas las órdenes, sus líneas, planes e informes PDF
-en una sola transacción. Devuelve `deleted_orders`; conserva productos y cajas.
-Las órdenes de demostración no se recrean después del borrado al reiniciar.
+`DELETE /api/orders` deletes all orders, their line items, plans and PDF reports
+in a single transaction. It returns `deleted_orders` and preserves products and
+boxes. Demo orders are not recreated on restart after deletion.
 
-## Publicar una demo gratuita
+## Publish a free demo
 
-La app está preparada para desplegarse completa como un único servicio Docker en
-Render Free. Consulta [la guía de despliegue](docs/DEPLOY.md). El plan gratuito
-utiliza almacenamiento temporal: las órdenes y los PDF se pierden al reiniciar.
+The complete app is ready to deploy as a single Docker service on Render Free.
+See the [deployment guide](docs/DEPLOY.md). The free plan uses ephemeral storage:
+orders and PDF reports are lost when the service restarts.

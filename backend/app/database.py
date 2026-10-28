@@ -127,6 +127,8 @@ def init_db() -> None:
         )
         _migrate_schema(db)
         seed_demo_data(db)
+        if os.getenv("PACKFLOW_SEED_REFERENCE_CATALOG", "").lower() in {"1", "true"}:
+            seed_reference_catalog(db)
 
 
 def _ensure_column(
@@ -167,6 +169,37 @@ def _migrate_schema(db: sqlite3.Connection) -> None:
 
 def rows_to_dicts(rows: Iterable[sqlite3.Row]) -> list[dict[str, Any]]:
     return [dict(row) for row in rows]
+
+
+def seed_reference_catalog(db: sqlite3.Connection) -> None:
+    """Restore the demo's reference catalog on fresh ephemeral instances.
+
+    Only insert missing records. User edits, disabled records and imported
+    measurements must survive subsequent startup calls on the same database.
+    """
+    catalog = json.loads((APP_DIR / "reference_catalog.json").read_text())
+    for product in catalog["products"]:
+        db.execute(
+            """INSERT INTO products
+                (sku, name, length_cm, width_cm, height_cm, weight_kg,
+                 rotation_allowed, fragile, active, created_at)
+               SELECT ?, ?, ?, ?, ?, ?, ?, ?, 1, ?
+               WHERE NOT EXISTS (SELECT 1 FROM products WHERE lower(trim(name)) = lower(?))
+               ON CONFLICT(sku) DO NOTHING""",
+            (product["sku"], product["name"], product["length_cm"], product["width_cm"],
+             product["height_cm"], product["weight_kg"], product["rotation_allowed"],
+             product["fragile"], now_iso(), product["name"]),
+        )
+    for box in catalog["boxes"]:
+        db.execute(
+            """INSERT INTO box_types
+                (code, name, length_cm, width_cm, height_cm, empty_weight_kg,
+                 max_weight_kg, active, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)
+               ON CONFLICT(code) DO NOTHING""",
+            (box["code"], box["name"], box["length_cm"], box["width_cm"], box["height_cm"],
+             box["empty_weight_kg"], box["max_weight_kg"], now_iso()),
+        )
 
 
 def seed_demo_data(db: sqlite3.Connection) -> None:
