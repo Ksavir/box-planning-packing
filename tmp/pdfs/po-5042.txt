@@ -1,0 +1,75 @@
+1
+Date : 10/23/2026
+Terms : Pre-Payment 
+Required
+Rev1 Technologies
+2901 Auburn Rd 
+Auburn Hills, MI 48326
+248-707-2850
+EIN: 82-2327080
+Purchase Order
+# PO-5042
+Vendor Address 
+Thought3D Ltd
+30V UNIT, 2nd Fl, Binja San Gusepp,
+Triq Indri Psalia
+Qormi, QRM4000 MT
+ Deliver To
+Rev1 Tech Warehouse
+2901 Auburn Rd 
+Auburn Hills, MI 48326
+248-707-2850
+EIN: 82-2327080
+# Item & Description Qty Rate Amount
+1 MAGIGOO SUPERGRIP GLIDE KIT 
+Smooth moves for perfect prints.
+The MAGIGOO GLIDE KIT is your go-to maintenance set for keeping 
+3D printer rods and rails in top shape. Designed to reduce friction 
+and ensure smooth, silent motion, it helps extend machine life and 
+boost print quality. Glide into better performance with every print!
+All new Supergrip formulation enhances performance over the 
+original formula on PEI and bare metal surfaces. Perfect for modern 
+flex plates!
+The Glide Roller (10cm)
+Magigoo Supergrip 250ml
+Cleaning Cloth
+Printed Stand 
+10.00
+1
+65.00 650.00
+2 MAGIGOO Glide Roller 
+ 
+2.00
+1
+18.00 36.00
+3 MAGIGOO Glide 250ml bottle - Supergrip 
+ 
+2.00
+1
+52.00 104.00
+4 MAGIGOO Glide 250ml bottle - PC 
+ 
+2.00
+1
+64.00 128.00
+5 Magigoo Supergrip 50ml 
+Say goodbye to warping and hello to perfect prints with Magigoo 
+Supergrip 50ml — the must-have adhesive for hassle-free 3D 
+printing. Designed for effortless first-layer adhesion and easy release, 
+5.00
+1
+11.50 57.50
+
+--- PAGE BREAK ---
+
+2
+Sub Total 975.50
+Total $975.50
+# Item & Description Qty Rate Amount
+it works like magic with PLA, ABS, PETG, and more. One glue, 
+countless flawless prints. Just apply, print, and pop it off when cool!
+The all new Supergrip formula enhances that amazing performance 
+of the original with enhanced adhesion to PEI plates and metal 
+surfaces.  
+Notes
+Request signature on delivery
