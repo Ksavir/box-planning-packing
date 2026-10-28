@@ -32,6 +32,16 @@ class ProductMatchingTests(unittest.TestCase):
         product = _find_product_by_description(self.db, "Magigoo Supergrip 50ml")
         self.assertIsNotNone(product)
 
+    def test_does_not_confuse_pp_and_pa_variants(self):
+        self.db.execute("DELETE FROM products")
+        self.db.execute("INSERT INTO products (name, active) VALUES ('Magigoo Pro PA', 1)")
+        self.assertIsNone(_find_product_by_description(self.db, "Magigoo Pro PP"))
+        self.db.execute("INSERT INTO products (name, active) VALUES ('Magigoo Pro PP', 1)")
+        self.assertEqual(_find_product_by_description(self.db, "Magigoo Pro PP")["name"], "Magigoo Pro PP")
+
+    def test_unknown_size_does_not_fall_back_to_50ml(self):
+        self.assertIsNone(_find_product_by_description(self.db, "Magigoo Original 500ml"))
+
     def test_internal_code_is_stable_and_not_user_supplied(self):
         self.assertEqual(
             _internal_product_code("Magigoo Supergrip 50 ml"),

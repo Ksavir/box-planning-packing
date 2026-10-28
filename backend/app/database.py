@@ -7,6 +7,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Iterable
 
+from .language import english_plan_copy
+
 
 APP_DIR = Path(__file__).resolve().parent
 DEFAULT_DB_PATH = APP_DIR.parent / "data" / "packflow.db"
@@ -29,6 +31,11 @@ def init_db() -> None:
     with connect() as db:
         db.executescript(
             """
+            CREATE TABLE IF NOT EXISTS app_settings (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+            );
+
             CREATE TABLE IF NOT EXISTS products (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 sku TEXT NOT NULL UNIQUE,
@@ -102,6 +109,15 @@ def init_db() -> None:
                 average_utilization REAL NOT NULL,
                 total_weight_kg REAL NOT NULL,
                 result_json TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS analysis_reports (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                order_id INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+                plan_id INTEGER UNIQUE REFERENCES packing_plans(id) ON DELETE SET NULL,
+                filename TEXT NOT NULL,
+                pdf_content BLOB NOT NULL,
                 created_at TEXT NOT NULL
             );
 
@@ -190,7 +206,9 @@ def seed_demo_data(db: sqlite3.Connection) -> None:
             ],
         )
 
-    if db.execute("SELECT COUNT(*) FROM orders").fetchone()[0] == 0:
+    seeded = db.execute("SELECT 1 FROM app_settings WHERE key = 'demo_orders_seeded'").fetchone()
+    db.execute("INSERT OR IGNORE INTO app_settings (key, value) VALUES ('demo_orders_seeded', '1')")
+    if not seeded and db.execute("SELECT COUNT(*) FROM orders").fetchone()[0] == 0:
         products = {
             row["sku"]: row["id"]
             for row in db.execute("SELECT id, sku FROM products").fetchall()
@@ -258,6 +276,6 @@ def latest_plan(db: sqlite3.Connection, order_id: int) -> dict[str, Any] | None:
     if not row:
         return None
     plan = dict(row)
-    plan["result"] = json.loads(plan.pop("result_json"))
+    plan["result"] = english_plan_copy(json.loads(plan.pop("result_json")))
     return plan
 

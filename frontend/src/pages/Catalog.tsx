@@ -1,6 +1,7 @@
 import { Box, FileSpreadsheet, PackagePlus, Plus, RotateCcw, Ruler, Search, X } from 'lucide-react'
 import { useMemo, useRef, useState } from 'react'
 import { api } from '../api'
+import { useDialogFocus } from '../hooks/useDialogFocus'
 import type { BoxType, Product } from '../types'
 
 interface CatalogProps {
@@ -30,12 +31,12 @@ export function Catalog({ products, boxes, onRefresh, notify }: CatalogProps) {
     try {
       const result = await api.importCatalog(tab, file)
       const importedLabel = result.reference_workbook
-        ? `${result.imported_products || 0} productos y ${result.imported_boxes || 0} cajas importados`
-        : `${result.imported} registros importados`
-      notify(`${importedLabel}${result.errors.length ? ` · ${result.errors.length} con error` : ''}.`)
+        ? `${result.imported_products || 0} products and ${result.imported_boxes || 0} boxes imported`
+        : `${result.imported} records imported`
+      notify(`${importedLabel}${result.errors.length ? ` · ${result.errors.length} with errors` : ''}.`)
       onRefresh()
     } catch (error) {
-      notify(error instanceof Error ? error.message : 'No se pudo importar el archivo.')
+      notify(error instanceof Error ? error.message : 'The file could not be imported.')
     } finally {
       setBusy(false)
       if (fileRef.current) fileRef.current.value = ''
@@ -45,52 +46,53 @@ export function Catalog({ products, boxes, onRefresh, notify }: CatalogProps) {
   return (
     <div className="page catalog-page">
       <header className="page-header">
-        <div><span className="eyebrow">DATOS MAESTROS / CATÁLOGO</span><h1>Dimensiones que mandan.</h1><p>La precisión del plan depende del peso y las medidas registradas.</p></div>
-        <div className="catalog-health"><span>CALIDAD DE DATOS</span><strong>100%</strong><i><b /></i></div>
+        <div><span className="eyebrow">MASTER DATA / CATALOG</span><h1>Products and boxes</h1><p>Accurate weights and dimensions make better packing plans.</p></div>
+        <div className="catalog-health"><span>PACKING CATALOG</span><strong>{products.length + boxes.length} records</strong></div>
       </header>
-      <div className="catalog-tabs">
-        <button className={tab === 'products' ? 'active' : ''} onClick={() => setTab('products')}><PackagePlus size={18} /> Productos <b>{products.length}</b></button>
-        <button className={tab === 'boxes' ? 'active' : ''} onClick={() => setTab('boxes')}><Box size={18} /> Tipos de caja <b>{boxes.length}</b></button>
+      <div className="catalog-tabs" role="group" aria-label="Catalog type">
+        <button aria-pressed={tab === 'products'} className={tab === 'products' ? 'active' : ''} onClick={() => setTab('products')}><PackagePlus size={18} /> Products <b>{products.length}</b></button>
+        <button aria-pressed={tab === 'boxes'} className={tab === 'boxes' ? 'active' : ''} onClick={() => setTab('boxes')}><Box size={18} /> Box types <b>{boxes.length}</b></button>
       </div>
       <section className="panel data-panel catalog-panel">
         <div className="table-tools">
-          <label><Search size={17} /><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={`Buscar ${tab === 'products' ? 'producto' : 'caja'}…`} /></label>
+          <label><Search size={17} /><input aria-label="Search the catalog" type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder={`Search ${tab === 'products' ? 'product' : 'box'}…`} /></label>
           <div>
             <input ref={fileRef} type="file" accept=".xlsx,.xlsm" hidden onChange={(e) => importFile(e.target.files?.[0])} />
-            <button disabled={busy} onClick={() => fileRef.current?.click()}><FileSpreadsheet size={16} /> {busy ? 'Importando…' : 'Importar Excel'}</button>
-            <button className="button button--accent button--small" onClick={() => setShowForm(true)}><Plus size={16} /> Añadir</button>
+            <button disabled={busy} onClick={() => fileRef.current?.click()}><FileSpreadsheet size={16} /> {busy ? 'Importing…' : 'Import Excel'}</button>
+            <button className="button button--accent button--small" onClick={() => setShowForm(true)}><Plus size={16} /> {tab === 'products' ? 'Add product' : 'Add box'}</button>
           </div>
         </div>
+        {!(tab === 'products' ? filteredProducts : filteredBoxes).length && <div className="empty-row">{query ? 'No matches. Try another name.' : 'Your catalog is empty. Add a record or import an Excel file.'}</div>}
         {tab === 'products' ? (
           <div className="catalog-table product-table">
-            <div className="catalog-table-head"><span>PRODUCTO</span><span>DIMENSIONES</span><span>PESO</span><span>ROTACIÓN</span><span>TIPO</span><span>ESTADO</span></div>
+            <div className="catalog-table-head"><span>PRODUCT</span><span>DIMENSIONS</span><span>WEIGHT</span><span>ROTATION</span><span>TYPE</span><span>STATUS</span></div>
             {filteredProducts.map((product) => (
               <div key={product.id} className="catalog-row">
-                <span><i className="product-cube" /><b>{product.name}</b><small>Identificado por descripción</small></span>
+                <span><i className="product-cube" /><b>{product.name}</b><small>Matched by description</small></span>
                 <span><Ruler size={15} /> {product.length_cm} × {product.width_cm} × {product.height_cm} cm</span>
                 <span>{product.weight_kg.toFixed(2)} kg</span>
-                <span><RotateCcw size={15} /> {product.rotation_allowed ? 'Permitida' : 'Fija'}</span>
-                <span>{product.fragile ? 'Frágil' : 'Estándar'}</span>
-                <span className="status-pill status-pill--packed"><i />Activo</span>
+                <span><RotateCcw size={15} /> {product.rotation_allowed ? 'Allowed' : 'Fixed'}</span>
+                <span>{product.fragile ? 'Fragile' : 'Standard'}</span>
+                <span className="status-pill status-pill--packed"><i />Active</span>
               </div>
             ))}
           </div>
         ) : (
           <div className="catalog-table box-table">
-            <div className="catalog-table-head"><span>CAJA</span><span>MEDIDAS INTERNAS</span><span>PESO VACÍA</span><span>PESO MÁXIMO</span><span>VOLUMEN</span><span>ESTADO</span></div>
+            <div className="catalog-table-head"><span>BOX</span><span>INTERNAL DIMENSIONS</span><span>EMPTY WEIGHT</span><span>MAX. WEIGHT</span><span>VOLUME</span><span>STATUS</span></div>
             {filteredBoxes.map((box) => (
               <div key={box.id} className="catalog-row">
                 <span><i className="box-icon-mini"><Box size={16} /></i><b>{box.code}</b><small>{box.name}</small></span>
                 <span><Ruler size={15} /> {box.length_cm} × {box.width_cm} × {box.height_cm} cm</span>
                 <span>{box.empty_weight_kg.toFixed(2)} kg</span><span>{box.max_weight_kg.toFixed(1)} kg</span>
                 <span>{((box.length_cm * box.width_cm * box.height_cm) / 1000).toFixed(1)} L</span>
-                <span className="status-pill status-pill--packed"><i />Activa</span>
+                <span className="status-pill status-pill--packed"><i />Active</span>
               </div>
             ))}
           </div>
         )}
       </section>
-      {showForm && <CatalogForm type={tab} onClose={() => setShowForm(false)} onSaved={() => { setShowForm(false); notify('Registro añadido al catálogo.'); onRefresh() }} />}
+      {showForm && <CatalogForm type={tab} onClose={() => setShowForm(false)} onSaved={() => { setShowForm(false); notify('Record added to the catalog.'); onRefresh() }} />}
     </div>
   )
 }
@@ -98,6 +100,7 @@ export function Catalog({ products, boxes, onRefresh, notify }: CatalogProps) {
 function CatalogForm({ type, onClose, onSaved }: { type: 'products' | 'boxes'; onClose: () => void; onSaved: () => void }) {
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  const dialogRef = useDialogFocus<HTMLFormElement>(onClose, busy)
   const submit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     setBusy(true)
@@ -111,26 +114,26 @@ function CatalogForm({ type, onClose, onSaved }: { type: 'products' | 'boxes'; o
       }
       onSaved()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo guardar.')
+      setError(err instanceof Error ? err.message : 'Could not save the record.')
       setBusy(false)
     }
   }
   return (
-    <div className="modal-layer">
-      <button className="modal-backdrop" onClick={onClose} />
-      <form className="catalog-form" onSubmit={submit}>
-        <header><div><span className="eyebrow">CATÁLOGO / ALTA</span><h2>Nuevo {type === 'products' ? 'producto' : 'tipo de caja'}</h2></div><button type="button" className="icon-button" onClick={onClose}><X /></button></header>
+    <div className="modal-layer" role="dialog" aria-modal="true" aria-label={type === 'products' ? 'New product' : 'New box type'}>
+      <button className="modal-backdrop" disabled={busy} onClick={onClose} aria-label="Close form" />
+      <form ref={dialogRef} className="catalog-form" onSubmit={submit}>
+        <header><div><span className="eyebrow">CATALOG / NEW RECORD</span><h2>New {type === 'products' ? 'product' : 'box type'}</h2></div><button type="button" disabled={busy} className="icon-button" aria-label="Close form" onClick={onClose}><X /></button></header>
         <div className="form-grid">
-          {type === 'boxes' && <label><span>Código</span><input name="code" required placeholder="BX-01" /></label>}
-          <label><span>Nombre</span><input name="name" required placeholder="Descripción clara" /></label>
-          <label><span>Largo (cm)</span><input name="length" type="number" step="0.01" min="0.01" required /></label>
-          <label><span>Ancho (cm)</span><input name="width" type="number" step="0.01" min="0.01" required /></label>
-          <label><span>Alto (cm)</span><input name="height" type="number" step="0.01" min="0.01" required /></label>
-          <label><span>{type === 'products' ? 'Peso (kg)' : 'Peso vacía (kg)'}</span><input name="weight" type="number" step="0.01" min={type === 'products' ? '0.01' : '0'} required /></label>
-          {type === 'boxes' && <label><span>Peso máximo (kg)</span><input name="maxWeight" type="number" step="0.01" min="0.01" required /></label>}
+          {type === 'boxes' && <label><span>Code</span><input name="code" required placeholder="BX-01" /></label>}
+          <label><span>Name</span><input name="name" required placeholder="Clear description" /></label>
+          <label><span>Length (cm)</span><input name="length" type="number" step="0.01" min="0.01" required /></label>
+          <label><span>Width (cm)</span><input name="width" type="number" step="0.01" min="0.01" required /></label>
+          <label><span>Height (cm)</span><input name="height" type="number" step="0.01" min="0.01" required /></label>
+          <label><span>{type === 'products' ? 'Weight (kg)' : 'Empty weight (kg)'}</span><input name="weight" type="number" step="0.01" min={type === 'products' ? '0.01' : '0'} required /></label>
+          {type === 'boxes' && <label><span>Max. weight (kg)</span><input name="maxWeight" type="number" step="0.01" min="0.01" required /></label>}
         </div>
-        {error && <p className="form-error">{error}</p>}
-        <footer><button type="button" className="button button--ghost" onClick={onClose}>Cancelar</button><button className="button button--accent" disabled={busy}>{busy ? 'Guardando…' : 'Guardar registro'}</button></footer>
+        {error && <p role="alert" className="form-error">{error}</p>}
+        <footer><button type="button" className="button button--ghost" disabled={busy} onClick={onClose}>Cancel</button><button className="button button--accent" disabled={busy}>{busy ? 'Saving…' : 'Save record'}</button></footer>
       </form>
     </div>
   )

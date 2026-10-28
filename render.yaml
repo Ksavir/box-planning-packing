@@ -1,0 +1,14 @@
+# A single free service serves both the React app and the FastAPI endpoints.
+# Free instances have ephemeral storage: demo data resets after restart/spin-down.
+services:
+  - type: web
+    name: packflow-demo
+    runtime: docker
+    plan: free
+    region: frankfurt
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /api/health
+    envVars:
+      - key: PACKFLOW_DB_PATH
+        value: /app/data/packflow.db

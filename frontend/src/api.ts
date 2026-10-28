@@ -1,10 +1,10 @@
-import type { BoxType, DashboardData, OrderDetailData, OrderSummary, Product } from './types'
+import type { AnalysisReport, BoxType, DashboardData, OrderDetailData, OrderSummary, Product } from './types'
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const response = await fetch(`/api${path}`, options)
   if (!response.ok) {
-    const payload = await response.json().catch(() => ({ detail: 'No se pudo completar la solicitud.' }))
-    throw new Error(payload.detail || 'No se pudo completar la solicitud.')
+    const payload = await response.json().catch(() => ({ detail: 'The request could not be completed.' }))
+    throw new Error(payload.detail || 'The request could not be completed.')
   }
   return response.json() as Promise<T>
 }
@@ -24,6 +24,13 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     }),
+  createEmailOrder: (payload: { text: string; client?: string; subject?: string }) =>
+    request<OrderDetailData>('/orders/email', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }),
+  savePackingPlan: (id: number) => request<AnalysisReport>(`/orders/${id}/reports`, { method: 'POST' }),
+  deleteAllOrders: () => request<{ deleted_orders: number }>('/orders', { method: 'DELETE' }),
   reviewOrder: (id: number, payload: object) =>
     request<OrderDetailData>(`/orders/${id}`, {
       method: 'PATCH',
@@ -41,13 +48,29 @@ export const api = {
     request<OrderDetailData>(`/orders/${orderId}/suggested-items/${itemId}`, { method: 'DELETE' }),
   exportOrder: async (id: number, orderNumber: string) => {
     const response = await fetch(`/api/orders/${id}/export`)
-    if (!response.ok) throw new Error('No se pudo exportar el plan.')
+    if (!response.ok) throw new Error('The plan could not be exported.')
     const url = URL.createObjectURL(await response.blob())
     const anchor = document.createElement('a')
     anchor.href = url
     anchor.download = `plan-${orderNumber}.xlsx`
     anchor.click()
     URL.revokeObjectURL(url)
+  },
+  exportOrderPdf: async (id: number, orderNumber: string) => {
+    const response = await fetch(`/api/orders/${id}/export.pdf`)
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({ detail: 'The PDF could not be exported.' }))
+      throw new Error(payload.detail || 'The PDF could not be exported.')
+    }
+    const url = URL.createObjectURL(await response.blob())
+    const anchor = document.createElement('a')
+    anchor.href = url
+    anchor.download = `plan-${orderNumber.replace(/[^a-zA-Z0-9_-]/g, '') || id}.pdf`
+    document.body.appendChild(anchor)
+    anchor.click()
+    anchor.remove()
+    // Allow the browser to start consuming the file before releasing the URL.
+    window.setTimeout(() => URL.revokeObjectURL(url), 60_000)
   },
   products: () => request<Product[]>('/catalog/products'),
   boxes: () => request<BoxType[]>('/catalog/boxes'),

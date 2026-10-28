@@ -1,7 +1,7 @@
 import { Box, Layers3 } from 'lucide-react'
 import type { PackedBox } from '../types'
 
-const palette = ['#19d3f3', '#ff9b52', '#b8e45c', '#ff5e70', '#a78bfa', '#45dfb1']
+const palette = ['#54b7cc', '#f5a264', '#83ba94', '#df8493', '#ad9fc6', '#a8b96b']
 
 function colorForProduct(productKey: string) {
   let hash = 0
@@ -14,8 +14,8 @@ export function BoxVisual({ box }: { box: PackedBox }) {
   return (
     <div className="box-visual-wrap">
       <div className="box-visual-toolbar">
-        <span><Layers3 size={15} /> VISTA SUPERIOR / CAPAS</span>
-        <span className="live-dot">GEOMETRÍA VERIFICADA</span>
+        <span><Layers3 size={15} /> TOP VIEW / LAYERS</span>
+        <span className="live-dot">GEOMETRY VERIFIED</span>
       </div>
       <div className="box-stage">
         <div className="box-stage-shadow" />

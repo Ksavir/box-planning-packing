@@ -57,7 +57,7 @@ def _iso_date(value: str, *, day_first: bool = False) -> str:
 def _base_result(filename: str, text: str) -> dict[str, Any]:
     return {
         "order_number": f"PDF-{date.today():%Y%m%d}",
-        "client": "Cliente por validar",
+        "client": "Customer awaiting validation",
         "vendor": "",
         "order_date": date.today().isoformat(),
         "requested_date": None,
@@ -286,7 +286,7 @@ def parse_catalog_excel(content: bytes, catalog_type: str) -> tuple[list[dict[st
     sheet = workbook.active
     rows = list(sheet.iter_rows(values_only=True))
     if not rows:
-        return [], ["El archivo no contiene filas."]
+        return [], ["The file contains no rows."]
     columns = _header_map(list(rows[0]))
     required = (
         ["name", "length_cm", "width_cm", "height_cm", "weight_kg"]
@@ -295,7 +295,7 @@ def parse_catalog_excel(content: bytes, catalog_type: str) -> tuple[list[dict[st
     )
     missing = [field for field in required if field not in columns]
     if missing:
-        return [], [f"Faltan columnas requeridas: {', '.join(missing)}"]
+        return [], [f"Missing required columns: {', '.join(missing)}"]
 
     records: list[dict[str, Any]] = []
     errors: list[str] = []
@@ -309,7 +309,7 @@ def parse_catalog_excel(content: bytes, catalog_type: str) -> tuple[list[dict[st
                     record[field] = float(record[field])
             records.append(record)
         except (TypeError, ValueError, IndexError) as exc:
-            errors.append(f"Fila {row_number}: datos inválidos ({exc}).")
+            errors.append(f"Row {row_number}: invalid data ({exc}).")
     return records, errors
 
 
@@ -393,3 +393,44 @@ def parse_reference_workbook(content: bytes) -> dict[str, list[dict[str, Any]]] 
         )
     return {"products": products, "boxes": boxes}
 
+
+
+def extract_email(text: str) -> dict[str, Any]:
+    """Conservative line-based parser for pasted email bodies (no external service).
+
+    Explicit quantity markers avoid treating 120ml, dates or prices as quantities.
+    Stop before signatures and quoted email history to avoid duplicate orders.
+    """
+    items = []
+    warnings = []
+    client = "Customer awaiting validation"
+    lines = text.splitlines()
+    unit = r"(?:pcs\.?|pieces?|units?|unidades?|uds\.?|piezas?)"
+    patterns = [
+        re.compile(rf"^(?P<description>.+?)\s*(?:[–—:;\-]\s*|\s+)(?P<quantity>\d+)\s*{unit}\s*[.;]?$", re.I),
+        re.compile(rf"^(?P<quantity>\d+)\s*(?:{unit}\s*(?:of\s+|de\s+)?|[x×]\s*)(?P<description>.+?)\s*$", re.I),
+        re.compile(r"^(?P<description>.+?)\s+[–—:;\-]\s*(?P<quantity>\d+)\s*$", re.I),
+        re.compile(r"^(?P<description>.+?)\s+[x×]\s*(?P<quantity>\d+)\s*$", re.I),
+    ]
+    for index, raw in enumerate(lines):
+        line = re.sub(r"^\s*(?:[•*\-]\s+|\d+[.)]\s+)?", "", raw).strip()
+        if re.match(r"^(?:>|On .+wrote:|El .+escribió:|[-]+\s*(?:Original|Forwarded) message)", line, re.I):
+            break
+        if re.match(r"^(?:best regards|kind regards|regards|saludos|atentamente)[,!.:\s]*$", line, re.I):
+            following = next((v.strip() for v in lines[index + 1:] if v.strip()), "")
+            if following and len(following) <= 120 and not following.startswith(">"):
+                client = following
+            break
+        match = next((m for pattern in patterns if (m := pattern.fullmatch(line))), None)
+        if match:
+            quantity = int(match["quantity"])
+            description = match["description"].strip(" \t-–—:;•")
+            if quantity <= 0 or not re.search(r"[^\W\d_]", description):
+                warnings.append(f"Line {index + 1}: invalid product or quantity.")
+                continue
+            items.append({"description": description, "quantity": quantity,
+                          "unit_price": 0, "line_number": len(items) + 1})
+        elif re.search(rf"\d+\s*{unit}\b", line, re.I):
+            warnings.append(f"Line {index + 1}: review the product and quantity manually.")
+    return {"client": client, "items": items, "warnings": warnings,
+            "confidence": 0.8 if items and not warnings else 0.4}

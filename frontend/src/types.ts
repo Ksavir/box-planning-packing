@@ -9,7 +9,7 @@ export interface OrderSummary {
   requested_date?: string | null
   currency: string
   source_filename?: string
-  source_type: 'pdf' | 'manual'
+  source_type: 'pdf' | 'manual' | 'email'
   total_amount: number
   status: string
   confidence: number
@@ -116,7 +116,7 @@ export interface OrderDetailData {
   requested_date?: string | null
   currency: string
   source_filename?: string
-  source_type: 'pdf' | 'manual'
+  source_type: 'pdf' | 'manual' | 'email'
   delivery_address: string
   billing_address: string
   terms: string
@@ -127,7 +127,17 @@ export interface OrderDetailData {
   status: string
   confidence: number
   items: OrderItem[]
+  extraction_warnings?: string[]
   plan?: PackingPlan | null
+}
+
+export interface AnalysisReport {
+  id: number
+  order_id: number
+  plan_id: number
+  filename: string
+  created_at: string
+  download_url: string
 }
 
 export interface Product {

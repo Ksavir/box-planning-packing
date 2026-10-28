@@ -9,17 +9,19 @@ from difflib import SequenceMatcher
 from io import BytesIO
 from contextlib import asynccontextmanager
 from typing import Any
+from uuid import uuid4
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response, StreamingResponse
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 from pydantic import BaseModel, Field
 
 from .database import connect, init_db, latest_plan, now_iso, rows_to_dicts
-from .extraction import extract_pdf, parse_catalog_excel, parse_reference_workbook
-from .packing import pack_order
+from .extraction import extract_email, extract_pdf, parse_catalog_excel, parse_reference_workbook
+from .packing import fill_existing_plan, pack_order
+from .reports import render_analysis_pdf
 
 
 class ProductPayload(BaseModel):
@@ -46,7 +48,7 @@ class OrderItemPayload(BaseModel):
     sku_raw: str = ""
     description: str
     quantity: int = Field(gt=0)
-    unit_price: float = Field(ge=0)
+    unit_price: float = Field(default=0, ge=0)
     line_number: int | None = None
     requested_date: str | None = None
     tax_label: str = ""
@@ -58,6 +60,13 @@ class OrderItemPayload(BaseModel):
 class SuggestedItemPayload(BaseModel):
     source_item_id: int
     quantity: int = Field(gt=0, le=100)
+
+
+class EmailOrderPayload(BaseModel):
+    text: str = Field(min_length=1, max_length=100_000)
+    order_number: str | None = Field(default=None, min_length=1, max_length=200)
+    client: str = ""
+    subject: str = ""
 
 
 class OrderReviewPayload(BaseModel):
@@ -87,7 +96,8 @@ def _line_amount(item: OrderItemPayload) -> float:
 
 def _normalize_product_name(value: str) -> str:
     ascii_value = unicodedata.normalize("NFKD", value).encode("ascii", "ignore").decode()
-    return re.sub(r"[^a-z0-9]+", " ", ascii_value.lower()).strip()
+    normalized = re.sub(r"[^a-z0-9]+", " ", ascii_value.lower()).strip()
+    return re.sub(r"(\d)\s+ml\b", r"\1ml", normalized)
 
 
 def _internal_product_code(name: str) -> str:
@@ -122,11 +132,11 @@ def _find_product_by_description(
         ("glide 250 ml", "glide bottle 250ml"),
         ("250ml bottle", "glide bottle 250ml"),
         ("250 ml bottle", "glide bottle 250ml"),
-        ("120ml", "120 ml"),
+        ("120ml", "120ml"),
         ("120 ml", "120 ml"),
-        ("50ml", "50 ml"),
+        ("50ml", "50ml"),
         ("50 ml", "50 ml"),
-        ("10ml", "10 ml"),
+        ("10ml", "10ml"),
         ("10 ml", "10 ml"),
     )
     for phrase, catalog_name in rules:
@@ -135,17 +145,21 @@ def _find_product_by_description(
                 (
                     product
                     for normalized_name, product in product_names.items()
-                    if catalog_name in normalized_name
+                    if (normalized_name == catalog_name or
+                        (catalog_name.startswith("glide") and catalog_name in normalized_name))
                 ),
                 None,
             )
             if catalog_product:
                 return catalog_product
-    if "magigoo" in target and "50 ml" in product_names:
-        return product_names["50 ml"]
+    if "magigoo" in target and not re.search(r"\d+ml\b", target) and "50ml" in product_names:
+        return product_names["50ml"]
+    variants = {"pp", "pa", "pc", "abs", "flex", "ht", "original", "pva"}
+    target_variants = set(target.split()) & variants
     scored = [
         (SequenceMatcher(None, target, _normalize_product_name(product["name"])).ratio(), product)
         for product in products
+        if (set(_normalize_product_name(product["name"]).split()) & variants) == target_variants
     ]
     best_score, best_product = max(scored, default=(0.0, None), key=lambda entry: entry[0])
     return best_product if best_score >= 0.88 else None
@@ -218,78 +232,34 @@ def _fill_recommendations(
 ) -> list[dict[str, Any]]:
     if not base_result["boxes"] or base_result["status"] != "complete":
         return []
-    remaining_volume = sum(box["remaining_volume_l"] for box in base_result["boxes"]) * 1000
-    remaining_weight = sum(
-        max(0.0, box["max_weight_kg"] - box["gross_weight_kg"])
-        for box in base_result["boxes"]
-    )
-    source_rows = rows_to_dicts(
-        db.execute(
-            """
-            SELECT oi.id, oi.product_id, oi.description, oi.unit_price,
-                   p.length_cm, p.width_cm, p.height_cm, p.weight_kg
-            FROM order_items oi
-            JOIN products p ON p.id = oi.product_id
-            WHERE oi.order_id = ? AND oi.is_suggested = 0 AND oi.unit_price > 0
-              AND p.active = 1
-            ORDER BY oi.id
-            """,
-            (order_id,),
-        ).fetchall()
-    )
-    recommendations: list[dict[str, Any]] = []
-    for source in source_rows:
-        unit_volume = source["length_cm"] * source["width_cm"] * source["height_cm"]
-        max_by_volume = int(remaining_volume // unit_volume) if unit_volume else 0
-        max_by_weight = int(remaining_weight // source["weight_kg"]) if source["weight_kg"] else 0
-        max_units = min(500, max_by_volume, max_by_weight)
-        if max_units <= 0:
+    # Each recommendation is an alternative, evaluated in the fixed boxes.
+    # Prices are optional: physical feasibility does not depend on pricing.
+    recommendations = []
+    seen = set()
+    for source in items:
+        if source["is_suggested"] or source["product_id"] in seen:
             continue
-        best_quantity = 0
-        best_result: dict[str, Any] | None = None
-        lower = 1
-        upper = max_units
-        while lower <= upper:
-            quantity = (lower + upper) // 2
-            trial_items = [dict(item) for item in items]
-            source_item = next(
-                (item for item in trial_items if item["order_item_id"] == source["id"]),
-                None,
-            )
-            if not source_item:
-                break
-            source_item["quantity"] += quantity
-            trial_result = pack_order(trial_items, boxes)
-            if (
-                trial_result["status"] == "complete"
-                and trial_result["box_count"] == base_result["box_count"]
-                and trial_result["average_utilization"] > base_result["average_utilization"]
-            ):
-                best_quantity = quantity
-                best_result = trial_result
-                lower = quantity + 1
-            else:
-                upper = quantity - 1
-        if best_quantity and best_result:
-            recommendations.append(
-                {
-                    "type": "product",
-                    "source_item_id": source["id"],
-                    "product_id": source["product_id"],
-                    "description": source["description"],
-                    "quantity": best_quantity,
-                    "unit_price": source["unit_price"],
-                    "amount": round(best_quantity * source["unit_price"], 2),
-                    "projected_utilization": best_result["average_utilization"],
-                    "box_count": best_result["box_count"],
-                }
-            )
-    recommendations.sort(
-        key=lambda recommendation: (
-            -recommendation["projected_utilization"],
-            recommendation["amount"],
-        )
-    )
+        seen.add(source["product_id"])
+        addition = dict(source, quantity=100)
+        trial = fill_existing_plan(base_result, items, [addition])
+        quantity = 100 - len(trial["unplaced"])
+        if not quantity:
+            continue
+        recommendations.append({
+            "type": "product",
+            "source_item_id": source["order_item_id"],
+            "product_id": source["product_id"],
+            "description": source["description"],
+            "quantity": quantity,
+            "unit_price": source["unit_price"],
+            "amount": round(quantity * source["unit_price"], 2),
+            "projected_utilization": trial["average_utilization"],
+            "box_count": base_result["box_count"],
+            "remaining_volume_l": sum(b["remaining_volume_l"] for b in trial["boxes"]),
+            "requires_pricing": source["unit_price"] == 0,
+            "alternative": True,
+        })
+    recommendations.sort(key=lambda r: (-r["projected_utilization"], r["amount"], r["source_item_id"]))
     return recommendations[:4]
 
 
@@ -315,7 +285,7 @@ def _run_plan(db: sqlite3.Connection, order_id: int) -> dict[str, Any]:
     ).fetchone()[0]
     items = _packing_rows(db, order_id)
     if total_items == 0:
-        raise HTTPException(422, "La orden no contiene ítems.")
+        raise HTTPException(422, "The order has no line items.")
     if len(items) != total_items:
         missing = [
             row["description"]
@@ -328,14 +298,22 @@ def _run_plan(db: sqlite3.Connection, order_id: int) -> dict[str, Any]:
         suffix = "…" if len(missing) > 4 else ""
         raise HTTPException(
             422,
-            f"No encontramos en el catálogo: {sample}{suffix}. Importa la referencia o ajusta la descripción.",
+            f"Not found in the catalog: {sample}{suffix}. Import the reference data or update the description.",
         )
     boxes = rows_to_dicts(
         db.execute("SELECT * FROM box_types WHERE active = 1 ORDER BY length_cm * width_cm * height_cm").fetchall()
     )
     if not boxes:
-        raise HTTPException(422, "No hay tipos de caja activos.")
-    result = pack_order(items, boxes)
+        raise HTTPException(422, "There are no active box types.")
+    primary_items = [item for item in items if not item["is_suggested"]]
+    additions = [item for item in items if item["is_suggested"]]
+    result = pack_order(primary_items, boxes)
+    if additions:
+        if result["status"] != "complete":
+            raise HTTPException(422, "The original order does not fit. Review the additional products.")
+        result = fill_existing_plan(result, items, additions)
+        if result["status"] != "complete":
+            raise HTTPException(422, "The additional products do not fit in the original order’s boxes.")
     result["product_recommendations"] = _fill_recommendations(
         db, order_id, items, boxes, result
     )
@@ -384,7 +362,7 @@ async def lifespan(_: FastAPI):
 app = FastAPI(
     title="PackFlow API",
     version="0.1.0",
-    description="Extracción de órdenes y planificación de empaque 3D.",
+    description="Purchase order extraction and 3D packing planning.",
     lifespan=lifespan,
 )
 app.add_middleware(
@@ -457,12 +435,22 @@ def list_orders() -> list[dict[str, Any]]:
         return _order_summary_rows(db)
 
 
+@app.delete("/api/orders")
+def delete_all_orders() -> dict[str, int]:
+    with connect() as db:
+        # Foreign key cascades remove items, packing plans and saved PDFs atomically.
+        count = db.execute("SELECT COUNT(*) FROM orders").fetchone()[0]
+        db.execute("DELETE FROM orders")
+        db.execute("INSERT OR REPLACE INTO app_settings (key, value) VALUES ('demo_orders_seeded', '1')")
+    return {"deleted_orders": count}
+
+
 @app.get("/api/orders/{order_id}")
 def get_order(order_id: int) -> dict[str, Any]:
     with connect() as db:
         row = db.execute("SELECT * FROM orders WHERE id = ?", (order_id,)).fetchone()
         if not row:
-            raise HTTPException(404, "Orden no encontrada.")
+            raise HTTPException(404, "Order not found.")
         order = dict(row)
         order["items"] = rows_to_dicts(
             db.execute(
@@ -484,14 +472,14 @@ def get_order(order_id: int) -> dict[str, Any]:
 @app.post("/api/orders/upload", status_code=201)
 async def upload_order(file: UploadFile = File(...)) -> dict[str, Any]:
     if not file.filename or not file.filename.lower().endswith(".pdf"):
-        raise HTTPException(400, "Carga un archivo PDF válido.")
+        raise HTTPException(400, "Upload a valid PDF file.")
     content = await file.read()
     if len(content) > 15 * 1024 * 1024:
-        raise HTTPException(413, "El PDF supera el límite de 15 MB.")
+        raise HTTPException(413, "The PDF exceeds the 15 MB limit.")
     try:
         extracted = extract_pdf(content, file.filename)
     except Exception as exc:
-        raise HTTPException(422, "No se pudo leer el PDF. Verifica que no esté dañado o protegido.") from exc
+        raise HTTPException(422, "The PDF could not be read. Check that it is not damaged or password-protected.") from exc
     with connect() as db:
         number = extracted["order_number"]
         existing = db.execute(
@@ -555,57 +543,87 @@ async def upload_order(file: UploadFile = File(...)) -> dict[str, Any]:
     return get_order(order_id)
 
 
+@app.post("/api/orders/email", status_code=201)
+def create_email_order(payload: EmailOrderPayload) -> dict[str, Any]:
+    extracted = extract_email(payload.text)
+    if payload.order_number is not None and not payload.order_number.strip():
+        raise HTTPException(422, "The order number cannot be empty.")
+    if not extracted["items"]:
+        raise HTTPException(422, "No lines with a product and quantity were found. For example, use: Magigoo Pro PP - 15 pcs.")
+    # Use the existing order validation/insertion path; all unknown fields remain editable.
+    review = OrderReviewPayload(
+        order_number=payload.order_number or f"EMAIL-{uuid4().hex[:12].upper()}",
+        client=payload.client.strip() or extracted["client"],
+        notes=payload.text,
+        items=[OrderItemPayload(**item) for item in extracted["items"]],
+    )
+    with connect() as db:
+        order_id = _create_order(db, review, source_type="email", source_filename=payload.subject or None, confidence=extracted["confidence"])
+    order = get_order(order_id)
+    order["extraction_warnings"] = extracted["warnings"]
+    return order
+
+
 @app.post("/api/orders/manual", status_code=201)
 def create_manual_order(payload: OrderReviewPayload) -> dict[str, Any]:
     with connect() as db:
-        if db.execute(
-            "SELECT 1 FROM orders WHERE order_number = ?", (payload.order_number.strip(),)
-        ).fetchone():
-            raise HTTPException(409, "Ya existe una orden con ese número.")
-        subtotal = payload.subtotal or round(
-            sum(_line_amount(item) for item in payload.items), 2
-        )
-        total = payload.total_amount or round(subtotal + payload.tax_amount, 2)
-        timestamp = now_iso()
-        cursor = db.execute(
-            """
-            INSERT INTO orders
-                (order_number, client, vendor, order_date, requested_date, currency,
-                 source_filename, source_type, delivery_address, billing_address,
-                 terms, notes, subtotal, tax_amount, total_amount,
-                 status, confidence, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, NULL, 'manual', ?, ?, ?, ?, ?, ?, ?,
-                    'needs_review', 1, ?, ?)
-            """,
-            (
-                payload.order_number.strip(),
-                payload.client.strip(),
-                payload.vendor.strip(),
-                payload.order_date,
-                payload.requested_date,
-                payload.currency.upper(),
-                payload.delivery_address,
-                payload.billing_address,
-                payload.terms,
-                payload.notes,
-                subtotal,
-                payload.tax_amount,
-                total,
-                timestamp,
-                timestamp,
-            ),
-        )
-        order_id = cursor.lastrowid
-        for position, item in enumerate(payload.items, start=1):
-            _insert_order_item(db, order_id, item, position)
+        order_id = _create_order(db, payload)
     return get_order(order_id)
+
+
+def _create_order(db: sqlite3.Connection, payload: OrderReviewPayload, *, source_type: str = "manual",
+                  source_filename: str | None = None, confidence: float = 1) -> int:
+    if db.execute(
+        "SELECT 1 FROM orders WHERE order_number = ?", (payload.order_number.strip(),)
+    ).fetchone():
+        raise HTTPException(409, "An order with this number already exists.")
+    subtotal = payload.subtotal or round(
+        sum(_line_amount(item) for item in payload.items), 2
+    )
+    total = payload.total_amount or round(subtotal + payload.tax_amount, 2)
+    timestamp = now_iso()
+    cursor = db.execute(
+        """
+        INSERT INTO orders
+            (order_number, client, vendor, order_date, requested_date, currency,
+             source_filename, source_type, delivery_address, billing_address,
+             terms, notes, subtotal, tax_amount, total_amount,
+             status, confidence, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                'needs_review', ?, ?, ?)
+        """,
+        (
+            payload.order_number.strip(),
+            payload.client.strip(),
+            payload.vendor.strip(),
+            payload.order_date,
+            payload.requested_date,
+            payload.currency.upper(),
+            source_filename,
+            source_type,
+            payload.delivery_address,
+            payload.billing_address,
+            payload.terms,
+            payload.notes,
+            subtotal,
+            payload.tax_amount,
+            total,
+            confidence,
+            timestamp,
+            timestamp,
+        ),
+    )
+    order_id = cursor.lastrowid
+    for position, item in enumerate(payload.items, start=1):
+        _insert_order_item(db, order_id, item, position)
+    return order_id
 
 
 @app.patch("/api/orders/{order_id}")
 def review_order(order_id: int, payload: OrderReviewPayload) -> dict[str, Any]:
     with connect() as db:
         if not db.execute("SELECT 1 FROM orders WHERE id = ?", (order_id,)).fetchone():
-            raise HTTPException(404, "Orden no encontrada.")
+            raise HTTPException(404, "Order not found.")
         try:
             db.execute(
                 """
@@ -642,7 +660,8 @@ def review_order(order_id: int, payload: OrderReviewPayload) -> dict[str, Any]:
                 ),
             )
         except sqlite3.IntegrityError as exc:
-            raise HTTPException(409, "Ya existe una orden con ese número.") from exc
+            raise HTTPException(409, "An order with this number already exists.") from exc
+        db.execute("DELETE FROM packing_plans WHERE order_id = ?", (order_id,))
         db.execute("DELETE FROM order_items WHERE order_id = ?", (order_id,))
         for position, item in enumerate(payload.items, start=1):
             _insert_order_item(db, order_id, item, position)
@@ -653,7 +672,7 @@ def review_order(order_id: int, payload: OrderReviewPayload) -> dict[str, Any]:
 def analyze_order(order_id: int) -> dict[str, Any]:
     with connect() as db:
         if not db.execute("SELECT 1 FROM orders WHERE id = ?", (order_id,)).fetchone():
-            raise HTTPException(404, "Orden no encontrada.")
+            raise HTTPException(404, "Order not found.")
         return _run_plan(db, order_id)
 
 
@@ -666,12 +685,11 @@ def add_suggested_item(order_id: int, payload: SuggestedItemPayload) -> dict[str
             FROM order_items oi
             JOIN products p ON p.id = oi.product_id
             WHERE oi.id = ? AND oi.order_id = ? AND oi.is_suggested = 0
-              AND oi.unit_price > 0
             """,
             (payload.source_item_id, order_id),
         ).fetchone()
         if not source:
-            raise HTTPException(404, "La recomendación ya no está disponible.")
+            raise HTTPException(404, "This recommendation is no longer available.")
         amount = round(payload.quantity * source["unit_price"], 2)
         existing = db.execute(
             """
@@ -718,50 +736,97 @@ def remove_suggested_item(order_id: int, item_id: int) -> dict[str, Any]:
             (item_id, order_id),
         ).fetchone()
         if not item:
-            raise HTTPException(404, "El producto agregado no existe o pertenece a la orden original.")
+            raise HTTPException(404, "The added product does not exist or belongs to the original order.")
         db.execute("DELETE FROM order_items WHERE id = ?", (item_id,))
         _refresh_order_totals(db, order_id)
         _run_plan(db, order_id)
     return get_order(order_id)
 
 
+def _save_analysis_report(order_id: int) -> dict[str, Any]:
+    order = get_order(order_id)
+    if not order.get("plan") or order["plan"]["result"]["status"] != "complete":
+        raise HTTPException(422, "Calculate a complete packing plan before saving the final analysis.")
+    plan_id = order["plan"]["id"]
+    safe_number = re.sub(r"[^A-Za-z0-9_-]", "", order["order_number"]) or str(order_id)
+    filename = f"plan-{safe_number}.pdf"
+    with connect() as db:
+        row = db.execute("SELECT id, filename, created_at FROM analysis_reports WHERE plan_id = ?", (plan_id,)).fetchone()
+        if row is None:
+            content = render_analysis_pdf(order)
+            db.execute("INSERT OR IGNORE INTO analysis_reports (order_id, plan_id, filename, pdf_content, created_at) VALUES (?, ?, ?, ?, ?)",
+                       (order_id, plan_id, filename, content, now_iso()))
+            row = db.execute("SELECT id, filename, created_at FROM analysis_reports WHERE plan_id = ?", (plan_id,)).fetchone()
+    return {**dict(row), "order_id": order_id, "plan_id": plan_id,
+            "download_url": f"/api/orders/{order_id}/reports/{row['id']}/pdf"}
+
+
+@app.post("/api/orders/{order_id}/reports", status_code=201)
+def save_analysis_report(order_id: int) -> dict[str, Any]:
+    return _save_analysis_report(order_id)
+
+
+@app.get("/api/orders/{order_id}/reports")
+def list_analysis_reports(order_id: int) -> list[dict[str, Any]]:
+    get_order(order_id)
+    with connect() as db:
+        rows = db.execute("SELECT id, plan_id, filename, created_at FROM analysis_reports WHERE order_id = ? ORDER BY id DESC", (order_id,)).fetchall()
+    return [{**dict(row), "download_url": f"/api/orders/{order_id}/reports/{row['id']}/pdf"} for row in rows]
+
+
+@app.get("/api/orders/{order_id}/reports/{report_id}/pdf")
+def download_analysis_report(order_id: int, report_id: int) -> Response:
+    with connect() as db:
+        row = db.execute("SELECT filename, pdf_content FROM analysis_reports WHERE id = ? AND order_id = ?", (report_id, order_id)).fetchone()
+    if row is None:
+        raise HTTPException(404, "Report not found.")
+    return Response(content=row["pdf_content"], media_type="application/pdf",
+                    headers={"Content-Disposition": f'attachment; filename="{row["filename"]}"'})
+
+
+@app.get("/api/orders/{order_id}/export.pdf")
+def export_order_pdf(order_id: int) -> Response:
+    report = _save_analysis_report(order_id)
+    return download_analysis_report(order_id, report["id"])
+
+
 @app.get("/api/orders/{order_id}/export")
 def export_order(order_id: int) -> StreamingResponse:
     order = get_order(order_id)
     if not order.get("plan"):
-        raise HTTPException(422, "Calcula el plan antes de exportarlo.")
+        raise HTTPException(422, "Calculate a packing plan before exporting it.")
     result = order["plan"]["result"]
     workbook = Workbook()
     summary = workbook.active
-    summary.title = "Resumen"
+    summary.title = "Summary"
     navy = "0A1725"
     cyan = "19D3F3"
     pale = "DCE8ED"
-    summary.append(["PACKFLOW", "Plan de carga"])
-    summary.append(["Orden", order["order_number"]])
-    summary.append(["Cliente", order["client"]])
-    summary.append(["Proveedor", order["vendor"]])
-    summary.append(["Fecha", order["order_date"]])
-    summary.append(["Fecha solicitada", order["requested_date"]])
-    summary.append(["Moneda", order["currency"]])
-    summary.append(["Términos", order["terms"]])
-    summary.append(["Dirección de entrega", order["delivery_address"]])
+    summary.append(["PACKFLOW", "Packing plan"])
+    summary.append(["Order", order["order_number"]])
+    summary.append(["Customer", order["client"]])
+    summary.append(["Supplier", order["vendor"]])
+    summary.append(["Date", order["order_date"]])
+    summary.append(["Requested date", order["requested_date"]])
+    summary.append(["Currency", order["currency"]])
+    summary.append(["Terms", order["terms"]])
+    summary.append(["Delivery address", order["delivery_address"]])
     summary.append(["Total", order["total_amount"]])
-    summary.append(["Cajas", result["box_count"]])
-    summary.append(["Unidades", result["unit_count"]])
-    summary.append(["Ocupación total", result["average_utilization"] / 100])
-    summary.append(["Peso bruto total (kg)", result["total_weight_kg"]])
-    summary.append(["Método", result["method"]])
+    summary.append(["Boxes", result["box_count"]])
+    summary.append(["Units", result["unit_count"]])
+    summary.append(["Total utilization", result["average_utilization"] / 100])
+    summary.append(["Total gross weight (kg)", result["total_weight_kg"]])
+    summary.append(["Method", result["method"]])
     summary["A1"].font = Font(bold=True, color=navy, size=18)
     summary["B1"].font = Font(bold=True, color=navy, size=14)
     summary["B12"].number_format = "0.0%"
     summary.column_dimensions["A"].width = 24
     summary.column_dimensions["B"].width = 54
 
-    boxes_sheet = workbook.create_sheet("Cajas")
+    boxes_sheet = workbook.create_sheet("Boxes")
     boxes_sheet.append([
-        "Caja", "Tipo", "Largo (cm)", "Ancho (cm)", "Alto (cm)",
-        "Ocupación", "Peso bruto (kg)", "Peso máximo (kg)", "Espacio libre (L)",
+        "Box", "Type", "Length (cm)", "Width (cm)", "Height (cm)",
+        "Utilization", "Gross weight (kg)", "Max. weight (kg)", "Available space (L)",
     ])
     for cell in boxes_sheet[1]:
         cell.fill = PatternFill("solid", fgColor=navy)
@@ -782,10 +847,10 @@ def export_order(order_id: int) -> StreamingResponse:
         letter = column[0].column_letter
         boxes_sheet.column_dimensions[letter].width = max(13, min(24, max(len(str(cell.value or "")) for cell in column) + 2))
 
-    contents = workbook.create_sheet("Contenido")
+    contents = workbook.create_sheet("Contents")
     contents.append([
-        "Caja", "Producto", "Cantidad", "Precio unitario",
-        "Descuento", "Impuesto", "Fecha solicitada", "Importe",
+        "Box", "Product", "Quantity", "Unit price",
+        "Discount", "Tax", "Requested date", "Amount",
     ])
     for cell in contents[1]:
         cell.fill = PatternFill("solid", fgColor=navy)
@@ -836,7 +901,7 @@ def create_product(payload: ProductPayload) -> dict[str, Any]:
     with connect() as db:
         existing = _find_product_by_description(db, payload.name)
         if existing and _normalize_product_name(existing["name"]) == _normalize_product_name(payload.name):
-            raise HTTPException(409, "Ya existe un producto con ese nombre.")
+            raise HTTPException(409, "A product with this name already exists.")
         try:
             cursor = db.execute(
                 """
@@ -852,7 +917,7 @@ def create_product(payload: ProductPayload) -> dict[str, Any]:
                 ),
             )
         except sqlite3.IntegrityError as exc:
-            raise HTTPException(409, "Ya existe un producto con ese nombre.") from exc
+            raise HTTPException(409, "A product with this name already exists.") from exc
         return dict(db.execute("SELECT * FROM products WHERE id = ?", (cursor.lastrowid,)).fetchone())
 
 
@@ -874,7 +939,7 @@ def create_box(payload: BoxPayload) -> dict[str, Any]:
                 ),
             )
         except sqlite3.IntegrityError as exc:
-            raise HTTPException(409, "El código de caja ya existe.") from exc
+            raise HTTPException(409, "This box code already exists.") from exc
         return dict(db.execute("SELECT * FROM box_types WHERE id = ?", (cursor.lastrowid,)).fetchone())
 
 
@@ -936,9 +1001,9 @@ def _upsert_box_record(db: sqlite3.Connection, record: dict[str, Any]) -> None:
 @app.post("/api/catalog/{catalog_type}/import")
 async def import_catalog(catalog_type: str, file: UploadFile = File(...)) -> dict[str, Any]:
     if catalog_type not in {"products", "boxes"}:
-        raise HTTPException(404, "Catálogo no reconocido.")
+        raise HTTPException(404, "Unknown catalog.")
     if not file.filename or not file.filename.lower().endswith((".xlsx", ".xlsm")):
-        raise HTTPException(400, "Carga un archivo Excel .xlsx.")
+        raise HTTPException(400, "Upload an Excel .xlsx file.")
     content = await file.read()
     reference = parse_reference_workbook(content)
     records: list[dict[str, Any]] = []
@@ -956,14 +1021,14 @@ async def import_catalog(catalog_type: str, file: UploadFile = File(...)) -> dic
                     imported += 1
                     imported_products += 1
                 except sqlite3.DatabaseError as exc:
-                    errors.append(f"No se pudo importar el producto {record.get('name')}: {exc}")
+                    errors.append(f"Could not import product {record.get('name')}: {exc}")
             for record in reference["boxes"]:
                 try:
                     _upsert_box_record(db, record)
                     imported += 1
                     imported_boxes += 1
                 except sqlite3.DatabaseError as exc:
-                    errors.append(f"No se pudo importar la caja {record.get('name')}: {exc}")
+                    errors.append(f"Could not import box {record.get('name')}: {exc}")
             for order in db.execute("SELECT id FROM orders").fetchall():
                 _relink_order_items(db, order["id"])
             return {
@@ -981,5 +1046,5 @@ async def import_catalog(catalog_type: str, file: UploadFile = File(...)) -> dic
                     _upsert_box_record(db, record)
                 imported += 1
             except sqlite3.DatabaseError as exc:
-                errors.append(f"No se pudo importar {record}: {exc}")
+                errors.append(f"Could not import {record}: {exc}")
     return {"imported": imported, "errors": errors}
