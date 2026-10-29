@@ -136,7 +136,7 @@ export function UploadModal({ onClose, onComplete }: UploadModalProps) {
               <label><span>Customer (optional)</span><input value={email.client} onChange={event => setEmail({ ...email, client: event.target.value })} placeholder="Detected from the signature when available" /></label>
               <label><span>Subject (optional)</span><input value={email.subject} onChange={event => setEmail({ ...email, subject: event.target.value })} placeholder="Pricing and lead time" /></label>
             </div>
-            <label className="email-body"><span>Received email *</span><textarea autoFocus maxLength={100000} value={email.text} onChange={event => setEmail({ ...email, text: event.target.value })} placeholder={'Hi Alex,\n\nCould you please provide the pricing and lead time for the following items?\n\nMagigoo Pro PP – 15 pcs\nMagigoo Pro PA – 15 pcs\nMagigoo Original 120ml – 15 pcs\n\nBest regards,\nQing'} /></label>
+            <label className="email-body"><span>Received email *</span><textarea autoFocus maxLength={100000} value={email.text} onChange={event => setEmail({ ...email, text: event.target.value })} placeholder="Paste your email here, including the products and quantities requested." /></label>
             <p className="email-helper">Use explicit quantities, such as “Product – 15 pcs” or “15 x Product”. You can correct any details in the next step.</p>
           </div>
         ) : (
