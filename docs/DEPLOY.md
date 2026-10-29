@@ -59,3 +59,18 @@ PACKFLOW_DB_PATH=/tmp/packflow-demo-check.db .venv/bin/uvicorn app.web:app --hos
 ```
 
 The normal two-server development workflow remains unchanged.
+
+## Reference catalog in the demo
+
+The Docker image sets `PACKFLOW_SEED_REFERENCE_CATALOG=true`. At startup the app
+adds the 16 reference products and 13 reference box types from `backend/app/reference_catalog.json`.
+These are the packing references previously imported from the operational workbook;
+no orders, customer details, prices or local database files are packaged.
+Existing records and user edits are preserved. A fresh free instance can calculate
+Magigoo/Glide orders without first importing the workbook manually.
+
+Reference dimensions still follow the prototype importer's estimates (including
+10 x 10 x 10 cm placeholders where dimensions were missing), and imported
+boxes retain its provisional 25 kg limit. Confirm these measurements before using
+packing results for actual shipments. To disable the seed, set the variable to
+`false`. The development workflow does not enable it by default.

@@ -12,6 +12,10 @@ class ReferenceSeedTests(unittest.TestCase):
     def test_fresh_render_database_can_calculate_magigoo_orders(self):
         with tempfile.TemporaryDirectory() as folder, patch.object(database, 'DB_PATH', Path(folder)/'demo.db'), patch.dict(os.environ, {'PACKFLOW_SEED_REFERENCE_CATALOG':'true'}):
             database.init_db()
+            with database.connect() as db:
+                self.assertEqual(db.execute("SELECT COUNT(*) FROM products WHERE sku LIKE 'PRODUCT-%'").fetchone()[0], 16)
+                self.assertEqual(db.execute("SELECT weight_kg FROM products WHERE name='Drywise dryer'").fetchone()[0], 15)
+                self.assertEqual(db.execute("SELECT COUNT(*) FROM box_types WHERE code NOT LIKE 'BX-%'").fetchone()[0], 13)
             order=create_manual_order(OrderReviewPayload(order_number='PO-REF', client='Test', items=[
                 OrderItemPayload(description='MAGIGOO SUPERGRIP GLIDE KIT', quantity=10),
                 OrderItemPayload(description='MAGIGOO Glide Roller', quantity=2),

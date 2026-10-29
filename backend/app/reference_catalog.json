@@ -1,104 +1,164 @@
 {
-  "source": "Reference catalog previously imported from Volume - weight calculator.xlsx; excludes orders, prices and customer data.",
-  "limitations": "Prototype product dimensions follow the existing reference importer; imported boxes use the existing provisional 25 kg capacity.",
+  "source": "Volume - weight calculator.xlsx, sheets boxes bottles volumes and box types-what fits; excludes orders, prices and customer data.",
+  "limitations": "Product dimensions follow the existing prototype importer, including provisional 10 x 10 x 10 cm sizes where no dimensions were provided; imported boxes use the existing provisional 25 kg capacity.",
   "products": [
     {
-      "sku": "PRODUCT-E9FC50548F",
       "name": "Sachet filled - NEW",
       "length_cm": 10.0,
       "width_cm": 7.0,
       "height_cm": 0.5,
       "weight_kg": 0.0022,
+      "sku": "PRODUCT-E9FC50548F",
       "rotation_allowed": 1,
       "fragile": 0
     },
     {
-      "sku": "PRODUCT-26EA7844A8",
       "name": "Sachet packed",
       "length_cm": 10.0,
       "width_cm": 7.0,
       "height_cm": 0.5,
       "weight_kg": 0.003,
+      "sku": "PRODUCT-26EA7844A8",
       "rotation_allowed": 1,
       "fragile": 0
     },
     {
-      "sku": "PRODUCT-0EEA5861A5",
       "name": "10 ml",
       "length_cm": 2.5,
       "width_cm": 2.5,
       "height_cm": 8.0,
       "weight_kg": 0.0245,
+      "sku": "PRODUCT-0EEA5861A5",
       "rotation_allowed": 1,
       "fragile": 0
     },
     {
-      "sku": "PRODUCT-0C10EF69EB",
       "name": "50 ml",
       "length_cm": 4.0,
       "width_cm": 4.0,
       "height_cm": 12.0,
       "weight_kg": 0.085,
+      "sku": "PRODUCT-0C10EF69EB",
       "rotation_allowed": 1,
       "fragile": 0
     },
     {
-      "sku": "PRODUCT-644D971311",
       "name": "50 ml no box no instructions",
       "length_cm": 4.0,
       "width_cm": 4.0,
       "height_cm": 12.0,
       "weight_kg": 0.08,
+      "sku": "PRODUCT-644D971311",
       "rotation_allowed": 1,
       "fragile": 0
     },
     {
-      "sku": "PRODUCT-D597DDFFDD",
       "name": "120 ml",
       "length_cm": 5.0,
       "width_cm": 5.0,
       "height_cm": 16.0,
       "weight_kg": 0.175,
+      "sku": "PRODUCT-D597DDFFDD",
       "rotation_allowed": 1,
       "fragile": 0
     },
     {
-      "sku": "PRODUCT-557F350BE5",
       "name": "glide bottle 250ml (6x20cm)",
       "length_cm": 6.0,
       "width_cm": 6.0,
       "height_cm": 20.0,
       "weight_kg": 0.3,
+      "sku": "PRODUCT-557F350BE5",
       "rotation_allowed": 1,
       "fragile": 0
     },
     {
-      "sku": "PRODUCT-C8C86E5B24",
       "name": "ProKit",
       "length_cm": 20.0,
       "width_cm": 15.0,
       "height_cm": 6.0,
       "weight_kg": 0.43,
+      "sku": "PRODUCT-C8C86E5B24",
       "rotation_allowed": 1,
       "fragile": 0
     },
     {
-      "sku": "PRODUCT-212A7B4076",
       "name": "Glide kit",
       "length_cm": 20.0,
       "width_cm": 15.0,
       "height_cm": 10.0,
       "weight_kg": 0.63,
+      "sku": "PRODUCT-212A7B4076",
       "rotation_allowed": 1,
       "fragile": 0
     },
     {
-      "sku": "PRODUCT-E5640C99CB",
       "name": "Glide roller",
       "length_cm": 20.0,
       "width_cm": 5.0,
       "height_cm": 5.0,
       "weight_kg": 0.22,
+      "sku": "PRODUCT-E5640C99CB",
+      "rotation_allowed": 1,
+      "fragile": 0
+    },
+    {
+      "name": "Drywise dryer",
+      "length_cm": 10.0,
+      "width_cm": 10.0,
+      "height_cm": 10.0,
+      "weight_kg": 15.0,
+      "sku": "PRODUCT-F41C46D84A",
+      "rotation_allowed": 1,
+      "fragile": 0
+    },
+    {
+      "name": "Desiccant",
+      "length_cm": 10.0,
+      "width_cm": 10.0,
+      "height_cm": 10.0,
+      "weight_kg": 0.95,
+      "sku": "PRODUCT-0E43A4B454",
+      "rotation_allowed": 1,
+      "fragile": 0
+    },
+    {
+      "name": "autoloader add-on",
+      "length_cm": 10.0,
+      "width_cm": 10.0,
+      "height_cm": 10.0,
+      "weight_kg": 0.865,
+      "sku": "PRODUCT-BE51EE6C18",
+      "rotation_allowed": 1,
+      "fragile": 0
+    },
+    {
+      "name": "PCB",
+      "length_cm": 10.0,
+      "width_cm": 10.0,
+      "height_cm": 10.0,
+      "weight_kg": 0.172,
+      "sku": "PRODUCT-DFBB42906D",
+      "rotation_allowed": 1,
+      "fragile": 0
+    },
+    {
+      "name": "RH sensors",
+      "length_cm": 10.0,
+      "width_cm": 10.0,
+      "height_cm": 10.0,
+      "weight_kg": 0.1275,
+      "sku": "PRODUCT-777224F3F5",
+      "rotation_allowed": 1,
+      "fragile": 0
+    },
+    {
+      "name": "Pump (14x14x7 cm)",
+      "length_cm": 14.0,
+      "width_cm": 14.0,
+      "height_cm": 7.0,
+      "weight_kg": 1.0,
+      "sku": "PRODUCT-3B9946E984",
       "rotation_allowed": 1,
       "fragile": 0
     }
