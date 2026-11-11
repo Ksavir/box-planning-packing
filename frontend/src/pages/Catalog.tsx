@@ -1,3 +1,6 @@
+import { Badge } from '../components/ui/badge'
+import { Input } from '../components/ui/input'
+import { Button } from '../components/ui/button'
 import { Box, FileSpreadsheet, PackagePlus, Plus, RotateCcw, Ruler, Search, X } from 'lucide-react'
 import { useMemo, useRef, useState } from 'react'
 import { api } from '../api'
@@ -8,7 +11,7 @@ interface CatalogProps {
   products: Product[]
   boxes: BoxType[]
   onRefresh: () => void
-  notify: (message: string) => void
+  notify: (message: string, error?:boolean) => void
 }
 
 export function Catalog({ products, boxes, onRefresh, notify }: CatalogProps) {
@@ -36,7 +39,7 @@ export function Catalog({ products, boxes, onRefresh, notify }: CatalogProps) {
       notify(`${importedLabel}${result.errors.length ? ` · ${result.errors.length} with errors` : ''}.`)
       onRefresh()
     } catch (error) {
-      notify(error instanceof Error ? error.message : 'The file could not be imported.')
+      notify(error instanceof Error ? error.message : 'The file could not be imported.',true)
     } finally {
       setBusy(false)
       if (fileRef.current) fileRef.current.value = ''
@@ -55,16 +58,16 @@ export function Catalog({ products, boxes, onRefresh, notify }: CatalogProps) {
       </div>
       <section className="panel data-panel catalog-panel">
         <div className="table-tools">
-          <label><Search size={17} /><input aria-label="Search the catalog" type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder={`Search ${tab === 'products' ? 'product' : 'box'}…`} /></label>
+          <label><Search size={17} /><Input aria-label="Search the catalog" type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder={`Search ${tab === 'products' ? 'product' : 'box'}…`} /></label>
           <div>
             <input ref={fileRef} type="file" accept=".xlsx,.xlsm" hidden onChange={(e) => importFile(e.target.files?.[0])} />
             <button disabled={busy} onClick={() => fileRef.current?.click()}><FileSpreadsheet size={16} /> {busy ? 'Importing…' : 'Import Excel'}</button>
-            <button className="button button--accent button--small" onClick={() => setShowForm(true)}><Plus size={16} /> {tab === 'products' ? 'Add product' : 'Add box'}</button>
+            <Button className="button button--accent button--small" onClick={() => setShowForm(true)}><Plus size={16} /> {tab === 'products' ? 'Add product' : 'Add box'}</Button>
           </div>
         </div>
         {!(tab === 'products' ? filteredProducts : filteredBoxes).length && <div className="empty-row">{query ? 'No matches. Try another name.' : 'Your catalog is empty. Add a record or import an Excel file.'}</div>}
         {tab === 'products' ? (
-          <div className="catalog-table product-table">
+          <div className="catalog-table product-table" role="region" aria-label="Product catalog" tabIndex={0}>
             <div className="catalog-table-head"><span>PRODUCT</span><span>DIMENSIONS</span><span>WEIGHT</span><span>ROTATION</span><span>TYPE</span><span>STATUS</span></div>
             {filteredProducts.map((product) => (
               <div key={product.id} className="catalog-row">
@@ -73,12 +76,12 @@ export function Catalog({ products, boxes, onRefresh, notify }: CatalogProps) {
                 <span>{product.weight_kg.toFixed(2)} kg</span>
                 <span><RotateCcw size={15} /> {product.rotation_allowed ? 'Allowed' : 'Fixed'}</span>
                 <span>{product.fragile ? 'Fragile' : 'Standard'}</span>
-                <span className="status-pill status-pill--packed"><i />Active</span>
+                <Badge className="status-pill status-pill--packed"><i />Active</Badge>
               </div>
             ))}
           </div>
         ) : (
-          <div className="catalog-table box-table">
+          <div className="catalog-table box-table" role="region" aria-label="Box catalog" tabIndex={0}>
             <div className="catalog-table-head"><span>BOX</span><span>INTERNAL DIMENSIONS</span><span>EMPTY WEIGHT</span><span>MAX. WEIGHT</span><span>VOLUME</span><span>STATUS</span></div>
             {filteredBoxes.map((box) => (
               <div key={box.id} className="catalog-row">
@@ -86,7 +89,7 @@ export function Catalog({ products, boxes, onRefresh, notify }: CatalogProps) {
                 <span><Ruler size={15} /> {box.length_cm} × {box.width_cm} × {box.height_cm} cm</span>
                 <span>{box.empty_weight_kg.toFixed(2)} kg</span><span>{box.max_weight_kg.toFixed(1)} kg</span>
                 <span>{((box.length_cm * box.width_cm * box.height_cm) / 1000).toFixed(1)} L</span>
-                <span className="status-pill status-pill--packed"><i />Active</span>
+                <Badge className="status-pill status-pill--packed"><i />Active</Badge>
               </div>
             ))}
           </div>
@@ -120,20 +123,20 @@ function CatalogForm({ type, onClose, onSaved }: { type: 'products' | 'boxes'; o
   }
   return (
     <div className="modal-layer" role="dialog" aria-modal="true" aria-label={type === 'products' ? 'New product' : 'New box type'}>
-      <button className="modal-backdrop" disabled={busy} onClick={onClose} aria-label="Close form" />
+      <button className="modal-backdrop" tabIndex={-1} aria-hidden="true" disabled={busy} onClick={onClose} aria-label="Close form" />
       <form ref={dialogRef} className="catalog-form" onSubmit={submit}>
         <header><div><span className="eyebrow">CATALOG / NEW RECORD</span><h2>New {type === 'products' ? 'product' : 'box type'}</h2></div><button type="button" disabled={busy} className="icon-button" aria-label="Close form" onClick={onClose}><X /></button></header>
         <div className="form-grid">
-          {type === 'boxes' && <label><span>Code</span><input name="code" required placeholder="BX-01" /></label>}
-          <label><span>Name</span><input name="name" required placeholder="Clear description" /></label>
-          <label><span>Length (cm)</span><input name="length" type="number" step="0.01" min="0.01" required /></label>
-          <label><span>Width (cm)</span><input name="width" type="number" step="0.01" min="0.01" required /></label>
-          <label><span>Height (cm)</span><input name="height" type="number" step="0.01" min="0.01" required /></label>
-          <label><span>{type === 'products' ? 'Weight (kg)' : 'Empty weight (kg)'}</span><input name="weight" type="number" step="0.01" min={type === 'products' ? '0.01' : '0'} required /></label>
-          {type === 'boxes' && <label><span>Max. weight (kg)</span><input name="maxWeight" type="number" step="0.01" min="0.01" required /></label>}
+          {type === 'boxes' && <label><span>Code</span><Input name="code" required placeholder="BX-01" /></label>}
+          <label><span>Name</span><Input name="name" required placeholder="Clear description" /></label>
+          <label><span>Length (cm)</span><Input name="length" type="number" step="0.01" min="0.01" required /></label>
+          <label><span>Width (cm)</span><Input name="width" type="number" step="0.01" min="0.01" required /></label>
+          <label><span>Height (cm)</span><Input name="height" type="number" step="0.01" min="0.01" required /></label>
+          <label><span>{type === 'products' ? 'Weight (kg)' : 'Empty weight (kg)'}</span><Input name="weight" type="number" step="0.01" min={type === 'products' ? '0.01' : '0'} required /></label>
+          {type === 'boxes' && <label><span>Max. weight (kg)</span><Input name="maxWeight" type="number" step="0.01" min="0.01" required /></label>}
         </div>
         {error && <p role="alert" className="form-error">{error}</p>}
-        <footer><button type="button" className="button button--ghost" disabled={busy} onClick={onClose}>Cancel</button><button className="button button--accent" disabled={busy}>{busy ? 'Saving…' : 'Save record'}</button></footer>
+        <footer><Button type="button" className="button button--ghost" disabled={busy} onClick={onClose}>Cancel</Button><Button className="button button--accent" disabled={busy}>{busy ? 'Saving…' : 'Save record'}</Button></footer>
       </form>
     </div>
   )
