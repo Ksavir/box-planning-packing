@@ -1,3 +1,5 @@
+import { Input } from './ui/input'
+import { Button } from './ui/button'
 import {
   Check,
   FileText,
@@ -10,7 +12,7 @@ import {
   UploadCloud,
   X,
 } from 'lucide-react'
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { api } from '../api'
 import { useDialogFocus } from '../hooks/useDialogFocus'
@@ -35,6 +37,8 @@ export function UploadModal({ onClose, onComplete }: UploadModalProps) {
   const [file, setFile] = useState<File | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const errorRef = useRef<HTMLParagraphElement>(null)
+  useEffect(() => { if (error) errorRef.current?.focus() }, [error])
   const dialogRef = useDialogFocus(onClose, busy)
   const [manual, setManual] = useState({
     order_number: '', client: '', vendor: 'Thought3D Ltd',
@@ -90,8 +94,8 @@ export function UploadModal({ onClose, onComplete }: UploadModalProps) {
   }))
 
   return createPortal((
-    <div className="modal-layer" role="dialog" aria-modal="true" aria-label="New order">
-      <button className="modal-backdrop" disabled={busy} onClick={onClose} aria-label="Close" />
+    <div className="modal-layer" role="dialog" aria-modal="true" aria-label="New order" aria-busy={busy}>
+      <button className="modal-backdrop" tabIndex={-1} aria-hidden="true" disabled={busy} onClick={onClose} aria-label="Close" />
       <section ref={dialogRef} className={`upload-modal ${mode !== 'pdf' ? 'upload-modal--manual' : ''}`}>
         <header>
           <div>
@@ -121,45 +125,46 @@ export function UploadModal({ onClose, onComplete }: UploadModalProps) {
               <span><b>03</b> Packing</span>
             </div>
             <button className={`drop-zone ${file ? 'drop-zone--ready' : ''}`}
-              onClick={() => inputRef.current?.click()} onDragOver={(event) => event.preventDefault()}
-              onDrop={(event) => { event.preventDefault(); const dropped = event.dataTransfer.files[0]; selectFile(dropped) }}>
+              disabled={busy} onClick={() => inputRef.current?.click()} onDragOver={(event) => event.preventDefault()}
+              onDrop={(event) => { event.preventDefault(); if (busy) return; const dropped = event.dataTransfer.files[0]; selectFile(dropped) }}>
               <input ref={inputRef} type="file" accept="application/pdf" onChange={(event) => selectFile(event.target.files?.[0])} hidden />
               {file ? <><div className="file-ready-icon"><FileText size={27} /><Check size={15} /></div><strong>{file.name}</strong><span>{(file.size / 1024).toFixed(1)} KB · READY TO PROCESS</span></>
                 : <><div className="drop-icon"><UploadCloud size={30} /></div><strong>Drag and drop a purchase order</strong><span>or click to select a PDF · MAX. 15 MB</span></>}
             </button>
+            {file && <div className="selected-file-actions"><button disabled={busy} onClick={()=>inputRef.current?.click()}>Replace PDF</button><button disabled={busy} onClick={()=>{setFile(null);if(inputRef.current)inputRef.current.value=''}}>Remove PDF</button></div>}
             <div className="extraction-note"><ScanLine size={21} /><div><strong>Assisted extraction</strong><span>We will extract the customer, supplier, dates, terms, line items and totals. You can edit everything before calculating.</span></div></div>
           </>
         ) : mode === 'email' ? (
           <div className="email-order-form">
             <div className="extraction-note"><ScanLine size={21} /><div><strong>From email to packing plan</strong><span>Paste the full email below. We’ll extract products and quantities, then you can review the details and calculate the boxes. Prices can be completed later.</span></div></div>
             <div className="email-metadata">
-              <label><span>Customer (optional)</span><input value={email.client} onChange={event => setEmail({ ...email, client: event.target.value })} placeholder="Detected from the signature when available" /></label>
-              <label><span>Subject (optional)</span><input value={email.subject} onChange={event => setEmail({ ...email, subject: event.target.value })} placeholder="Pricing and lead time" /></label>
+              <label><span>Customer (optional)</span><Input value={email.client} onChange={event => setEmail({ ...email, client: event.target.value })} placeholder="Detected from the signature when available" /></label>
+              <label><span>Subject (optional)</span><Input value={email.subject} onChange={event => setEmail({ ...email, subject: event.target.value })} placeholder="Pricing and lead time" /></label>
             </div>
-            <label className="email-body"><span>Received email *</span><textarea autoFocus maxLength={100000} value={email.text} onChange={event => setEmail({ ...email, text: event.target.value })} placeholder="Paste your email here, including the products and quantities requested." /></label>
-            <p className="email-helper">Use explicit quantities, such as “Product – 15 pcs” or “15 x Product”. You can correct any details in the next step.</p>
+            <label className="email-body"><span>Received email *</span><textarea aria-describedby={error ? "new-order-error email-helper" : "email-helper"} aria-required="true" autoFocus maxLength={100000} value={email.text} onChange={event => setEmail({ ...email, text: event.target.value })} placeholder="Paste your email here, including the products and quantities requested." /></label>
+            <p id="email-helper" className="email-helper">Use explicit quantities, such as “Product – 15 pcs” or “15 x Product”. You can correct any details in the next step.</p>
           </div>
         ) : (
           <div className="manual-order-form">
             <div className="manual-context"><Mail size={18} /><span><b>Flexible entry</b><small>Copy the essential details from the email. You can review the full order next.</small></span></div>
             <div className="manual-fields">
-              <label><span>Order number *</span><input value={manual.order_number} onChange={(event) => setManual({ ...manual, order_number: event.target.value.toUpperCase() })} placeholder="PO-0000" /></label>
-              <label className="wide"><span>Customer *</span><input value={manual.client} onChange={(event) => setManual({ ...manual, client: event.target.value })} placeholder="Customer company" /></label>
-              <label><span>Supplier</span><input value={manual.vendor} onChange={(event) => setManual({ ...manual, vendor: event.target.value })} /></label>
-              <label><span>Order date</span><input type="date" value={manual.order_date} onChange={(event) => setManual({ ...manual, order_date: event.target.value })} /></label>
-              <label><span>Requested date</span><input type="date" value={manual.requested_date} onChange={(event) => setManual({ ...manual, requested_date: event.target.value })} /></label>
+              <label><span>Order number *</span><Input aria-required="true" aria-invalid={!!error && !manual.order_number.trim() || undefined} aria-describedby={error ? "new-order-error" : undefined} value={manual.order_number} onChange={(event) => setManual({ ...manual, order_number: event.target.value.toUpperCase() })} placeholder="PO-0000" /></label>
+              <label className="wide"><span>Customer *</span><Input aria-required="true" aria-invalid={!!error && !manual.client.trim() || undefined} aria-describedby={error ? "new-order-error" : undefined} value={manual.client} onChange={(event) => setManual({ ...manual, client: event.target.value })} placeholder="Customer company" /></label>
+              <label><span>Supplier</span><Input value={manual.vendor} onChange={(event) => setManual({ ...manual, vendor: event.target.value })} /></label>
+              <label><span>Order date</span><Input type="date" value={manual.order_date} onChange={(event) => setManual({ ...manual, order_date: event.target.value })} /></label>
+              <label><span>Requested date</span><Input type="date" value={manual.requested_date} onChange={(event) => setManual({ ...manual, requested_date: event.target.value })} /></label>
               <label><span>Currency</span><select value={manual.currency} onChange={(event) => setManual({ ...manual, currency: event.target.value })}><option>USD</option><option>EUR</option><option>GBP</option></select></label>
               <label className="wide"><span>Delivery address</span><textarea value={manual.delivery_address} onChange={(event) => setManual({ ...manual, delivery_address: event.target.value })} placeholder="Name, street, city, country" /></label>
-              <label><span>Terms</span><input value={manual.terms} onChange={(event) => setManual({ ...manual, terms: event.target.value })} placeholder="Payment, delivery…" /></label>
+              <label><span>Terms</span><Input value={manual.terms} onChange={(event) => setManual({ ...manual, terms: event.target.value })} placeholder="Payment, delivery…" /></label>
             </div>
             <div className="manual-items-title"><div><strong>Requested products</strong><span>We will use the description to match each product to the catalog.</span></div><button onClick={() => setManual({ ...manual, items: [...manual.items, emptyItem()] })}><Plus size={15} /> Add product</button></div>
             <div className="manual-item-list">
               <div className="manual-item-head"><span>DESCRIPTION *</span><span>QTY.</span><span>PRICE</span><span>AMOUNT</span><span /></div>
               {manual.items.map((item, index) => (
                 <div className="manual-item" key={index}>
-                  <input aria-label={`Product description ${index + 1}`} value={item.description} onChange={(event) => updateItem(index, { description: event.target.value })} placeholder="Requested product" />
-                  <input aria-label={`Product quantity ${index + 1}`} type="number" min="1" value={item.quantity} onChange={(event) => updateItem(index, { quantity: Number(event.target.value) })} />
-                  <input aria-label={`Product price ${index + 1}`} type="number" min="0" step="0.01" value={item.unit_price} onChange={(event) => updateItem(index, { unit_price: Number(event.target.value) })} />
+                  <Input aria-label={`Product description ${index + 1}`} aria-required={index === 0 || undefined} aria-invalid={!!error && index === 0 && !manual.items.some(line => line.description.trim()) || undefined} aria-describedby={error ? "new-order-error" : undefined} value={item.description} onChange={(event) => updateItem(index, { description: event.target.value })} placeholder="Requested product" />
+                  <Input aria-label={`Product quantity ${index + 1}`} aria-invalid={!!error && (!Number.isInteger(item.quantity) || item.quantity < 1) || undefined} aria-describedby={error ? "new-order-error" : undefined} type="number" min="1" value={item.quantity} onChange={(event) => updateItem(index, { quantity: Number(event.target.value) })} />
+                  <Input aria-label={`Product price ${index + 1}`} aria-invalid={!!error && (!Number.isFinite(item.unit_price) || item.unit_price < 0) || undefined} aria-describedby={error ? "new-order-error" : undefined} type="number" min="0" step="0.01" value={item.unit_price} onChange={(event) => updateItem(index, { unit_price: Number(event.target.value) })} />
                   <strong>{manual.currency} {(item.quantity * item.unit_price).toFixed(2)}</strong>
                   <button aria-label={`Remove product ${index + 1}`} disabled={manual.items.length === 1} onClick={() => setManual({ ...manual, items: manual.items.filter((_, itemIndex) => itemIndex !== index) })}><Trash2 size={15} /></button>
                 </div>
@@ -168,13 +173,14 @@ export function UploadModal({ onClose, onComplete }: UploadModalProps) {
           </div>
         )}
 
-        {error && <p role="alert" className="form-error">{error}</p>}
+        {busy && <p className="operation-status" role="status">{mode==='pdf'?'Uploading PDF and extracting order details…':mode==='email'?'Extracting products and quantities from your email…':'Saving the order details…'} You will review catalog matches before calculation.</p>}
+        {error && <p ref={errorRef} tabIndex={-1} role="alert" id="new-order-error" className="form-error">{error}</p>}
         <footer>
-          <button className="button button--ghost" disabled={busy} onClick={onClose}>Cancel</button>
-          <button className="button button--accent" disabled={busy || (mode === 'pdf' && !file) || (mode === 'email' && !email.text.trim())} onClick={mode === 'pdf' ? submitPdf : mode === 'email' ? submitEmail : submitManual}>
+          <Button className="button button--ghost" disabled={busy} onClick={onClose}>Cancel</Button>
+          <Button className="button button--accent" disabled={busy || (mode === 'pdf' && !file) || (mode === 'email' && !email.text.trim())} onClick={mode === 'pdf' ? submitPdf : mode === 'email' ? submitEmail : submitManual}>
             {busy ? <LoaderCircle className="spin" size={18} /> : mode === 'pdf' ? <ScanLine size={18} /> : <Check size={18} />}
             {busy ? 'Processing…' : mode === 'pdf' ? 'Process document' : mode === 'email' ? 'Extract and review order' : 'Create and review order'}
-          </button>
+          </Button>
         </footer>
       </section>
     </div>

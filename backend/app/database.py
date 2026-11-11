@@ -112,6 +112,12 @@ def init_db() -> None:
                 created_at TEXT NOT NULL
             );
 
+            CREATE TABLE IF NOT EXISTS source_documents (
+                order_id INTEGER PRIMARY KEY REFERENCES orders(id) ON DELETE CASCADE,
+                filename TEXT NOT NULL,
+                content BLOB NOT NULL
+            );
+
             CREATE TABLE IF NOT EXISTS analysis_reports (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 order_id INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
