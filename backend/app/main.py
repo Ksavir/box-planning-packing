@@ -11,7 +11,7 @@ from contextlib import asynccontextmanager
 from typing import Any
 from uuid import uuid4
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response, StreamingResponse
 from openpyxl import Workbook
@@ -60,6 +60,7 @@ class OrderItemPayload(BaseModel):
 class SuggestedItemPayload(BaseModel):
     source_item_id: int
     quantity: int = Field(gt=0, le=100)
+    expected_plan_id: int | None = Field(default=None, gt=0)
 
 
 class EmailOrderPayload(BaseModel):
@@ -465,6 +466,7 @@ def get_order(order_id: int) -> dict[str, Any]:
                 (order_id,),
             ).fetchall()
         )
+        order["source_available"] = bool(db.execute("SELECT 1 FROM source_documents WHERE order_id = ?", (order_id,)).fetchone())
         order["plan"] = latest_plan(db, order_id)
         return order
 
@@ -537,6 +539,7 @@ async def upload_order(file: UploadFile = File(...)) -> dict[str, Any]:
                 (number, *values[:-1], timestamp, values[-1]),
             )
             order_id = cursor.lastrowid
+        db.execute("INSERT OR REPLACE INTO source_documents (order_id, filename, content) VALUES (?, ?, ?)", (order_id, file.filename, content))
         for item in extracted["items"]:
             payload = OrderItemPayload(**item)
             _insert_order_item(db, order_id, payload, payload.line_number or 1)
@@ -676,9 +679,109 @@ def analyze_order(order_id: int) -> dict[str, Any]:
         return _run_plan(db, order_id)
 
 
+@app.get("/api/orders/{order_id}/source.pdf")
+def view_source_pdf(order_id: int) -> Response:
+    with connect() as db:
+        row = db.execute("SELECT filename, content FROM source_documents WHERE order_id = ?", (order_id,)).fetchone()
+    if not row:
+        raise HTTPException(404, "The original PDF is not available for this order. PDFs uploaded before source retention cannot be viewed.")
+    filename = re.sub(r"[^A-Za-z0-9_.-]", "_", row["filename"])
+    return Response(row["content"], media_type="application/pdf", headers={
+        "Content-Disposition": f'inline; filename="{filename}"', "X-Content-Type-Options": "nosniff", "Cache-Control": "no-store"})
+
+
+def _check_expected_plan(db: sqlite3.Connection, order_id: int, expected: int | None) -> dict[str, Any] | None:
+    plan = latest_plan(db, order_id)
+    if expected is not None and (not plan or plan["id"] != expected):
+        raise HTTPException(409, "The packing plan changed. Refresh and preview the addition again.")
+    return plan
+
+
+def _append_suggested_item(db: sqlite3.Connection, order_id: int, source: sqlite3.Row, quantity: int) -> None:
+    amount = round(quantity * source["unit_price"], 2)
+    existing = db.execute(
+        """
+        SELECT id, quantity FROM order_items
+        WHERE order_id = ? AND is_suggested = 1 AND product_id = ?
+          AND description = ? AND unit_price = ?
+        """,
+        (order_id, source["product_id"], source["description"], source["unit_price"]),
+    ).fetchone()
+    if existing:
+        quantity = existing["quantity"] + quantity
+        db.execute(
+            "UPDATE order_items SET quantity = ?, amount = ? WHERE id = ?",
+            (quantity, round(quantity * source["unit_price"], 2), existing["id"]),
+        )
+    else:
+        line_number = db.execute(
+            "SELECT COALESCE(MAX(line_number), 0) + 1 FROM order_items WHERE order_id = ?",
+            (order_id,),
+        ).fetchone()[0]
+        db.execute(
+            """
+            INSERT INTO order_items
+                (order_id, product_id, sku_raw, description, quantity, unit_price,
+                 line_number, requested_date, tax_label, discount_percent, amount,
+                 is_suggested)
+            VALUES (?, ?, '', ?, ?, ?, ?, ?, '', 0, ?, 1)
+            """,
+            (
+                order_id, source["product_id"], source["description"], quantity,
+                source["unit_price"], line_number, source["requested_date"], amount,
+            ),
+        )
+    _refresh_order_totals(db, order_id)
+
+
+@app.post("/api/orders/{order_id}/recommendations/preview")
+def preview_recommendation(order_id: int, payload: SuggestedItemPayload) -> dict[str, Any]:
+    with connect() as db:
+        plan = _check_expected_plan(db, order_id, payload.expected_plan_id)
+        if not plan or plan["result"]["status"] != "complete":
+            raise HTTPException(422, "Calculate a complete plan before previewing an addition.")
+        items = _packing_rows(db, order_id)
+        source = next((item for item in items if item["order_item_id"] == payload.source_item_id and not item["is_suggested"]), None)
+        if not source:
+            raise HTTPException(404, "This recommendation is no longer available.")
+        before = plan["result"]
+        current_total = db.execute("SELECT total_amount FROM orders WHERE id = ?", (order_id,)).fetchone()[0]
+        if not current_total:
+            # Match the existing UI fallback for legacy/demo orders with zero totals.
+            current_total = db.execute("SELECT COALESCE(SUM(quantity * unit_price), 0) FROM order_items WHERE order_id = ?", (order_id,)).fetchone()[0]
+        source_row = db.execute("SELECT * FROM order_items WHERE id = ? AND order_id = ?", (payload.source_item_id, order_id)).fetchone()
+        # Use the exact apply path, then roll back all rows/totals/plans. This also
+        # handles additions merged into an existing suggested line identically.
+        db.execute("SAVEPOINT recommendation_preview")
+        try:
+            _append_suggested_item(db, order_id, source_row, payload.quantity)
+            projected = _run_plan(db, order_id)
+            projected_total = db.execute("SELECT total_amount FROM orders WHERE id = ?", (order_id,)).fetchone()[0]
+        finally:
+            db.execute("ROLLBACK TO recommendation_preview")
+            db.execute("RELEASE recommendation_preview")
+        if projected["status"] != "complete":
+            raise HTTPException(422, "These units do not fit in the current boxes. Refresh the recommendations.")
+        if [(b["box_type_id"], b["dimensions_cm"]) for b in projected["boxes"]] != [(b["box_type_id"], b["dimensions_cm"]) for b in before["boxes"]]:
+            raise HTTPException(409, "The catalog changed. Recalculate before previewing an addition.")
+        changes = []
+        for current, trial in zip(before["boxes"], projected["boxes"], strict=True):
+            added = len(trial["placements"]) - len(current["placements"])
+            if added:
+                changes.append({"sequence": current["sequence"], "box_code": current["box_code"], "quantity": added,
+                                "current_utilization": current["utilization"], "projected_utilization": trial["utilization"]})
+        return {"plan_id": plan["id"], "source_item_id": payload.source_item_id, "quantity": payload.quantity,
+                "description": source["description"], "amount": round(source["unit_price"] * payload.quantity, 2),
+                "current_order_total": current_total, "projected_order_total": projected_total,
+                "requires_pricing": source["unit_price"] == 0, "current_utilization": before["average_utilization"],
+                "projected_utilization": projected["average_utilization"], "boxes": changes,
+                "result": projected}
+
+
 @app.post("/api/orders/{order_id}/suggested-items", status_code=201)
 def add_suggested_item(order_id: int, payload: SuggestedItemPayload) -> dict[str, Any]:
     with connect() as db:
+        _check_expected_plan(db, order_id, payload.expected_plan_id)
         source = db.execute(
             """
             SELECT oi.*, p.name AS product_name
@@ -690,54 +793,29 @@ def add_suggested_item(order_id: int, payload: SuggestedItemPayload) -> dict[str
         ).fetchone()
         if not source:
             raise HTTPException(404, "This recommendation is no longer available.")
-        amount = round(payload.quantity * source["unit_price"], 2)
-        existing = db.execute(
-            """
-            SELECT id, quantity FROM order_items
-            WHERE order_id = ? AND is_suggested = 1 AND product_id = ?
-              AND description = ? AND unit_price = ?
-            """,
-            (order_id, source["product_id"], source["description"], source["unit_price"]),
-        ).fetchone()
-        if existing:
-            quantity = existing["quantity"] + payload.quantity
-            db.execute(
-                "UPDATE order_items SET quantity = ?, amount = ? WHERE id = ?",
-                (quantity, round(quantity * source["unit_price"], 2), existing["id"]),
-            )
-        else:
-            line_number = db.execute(
-                "SELECT COALESCE(MAX(line_number), 0) + 1 FROM order_items WHERE order_id = ?",
-                (order_id,),
-            ).fetchone()[0]
-            db.execute(
-                """
-                INSERT INTO order_items
-                    (order_id, product_id, sku_raw, description, quantity, unit_price,
-                     line_number, requested_date, tax_label, discount_percent, amount,
-                     is_suggested)
-                VALUES (?, ?, '', ?, ?, ?, ?, ?, '', 0, ?, 1)
-                """,
-                (
-                    order_id, source["product_id"], source["description"], payload.quantity,
-                    source["unit_price"], line_number, source["requested_date"], amount,
-                ),
-            )
-        _refresh_order_totals(db, order_id)
+        _append_suggested_item(db, order_id, source, payload.quantity)
         _run_plan(db, order_id)
     return get_order(order_id)
 
 
 @app.delete("/api/orders/{order_id}/suggested-items/{item_id}")
-def remove_suggested_item(order_id: int, item_id: int) -> dict[str, Any]:
+def remove_suggested_item(order_id: int, item_id: int, quantity: int | None = Query(default=None, gt=0)) -> dict[str, Any]:
+    if not isinstance(quantity, int):
+        quantity = None
     with connect() as db:
         item = db.execute(
-            "SELECT id FROM order_items WHERE id = ? AND order_id = ? AND is_suggested = 1",
+            "SELECT id, quantity, unit_price FROM order_items WHERE id = ? AND order_id = ? AND is_suggested = 1",
             (item_id, order_id),
         ).fetchone()
         if not item:
             raise HTTPException(404, "The added product does not exist or belongs to the original order.")
-        db.execute("DELETE FROM order_items WHERE id = ?", (item_id,))
+        if quantity is not None and (quantity <= 0 or quantity > item["quantity"]):
+            raise HTTPException(422, "The quantity exceeds the added units.")
+        remaining = item["quantity"] - (quantity if quantity is not None else item["quantity"])
+        if remaining:
+            db.execute("UPDATE order_items SET quantity = ?, amount = ? WHERE id = ?", (remaining, round(remaining * item["unit_price"], 2), item_id))
+        else:
+            db.execute("DELETE FROM order_items WHERE id = ?", (item_id,))
         _refresh_order_totals(db, order_id)
         _run_plan(db, order_id)
     return get_order(order_id)

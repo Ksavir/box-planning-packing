@@ -127,6 +127,7 @@ export interface OrderDetailData {
   status: string
   confidence: number
   items: OrderItem[]
+  source_available?: boolean
   extraction_warnings?: string[]
   plan?: PackingPlan | null
 }

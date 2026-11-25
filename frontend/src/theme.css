@@ -1,0 +1,29 @@
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&family=Manrope:wght@400;500;600;700&display=swap');
+@import "tailwindcss";
+@import "./styles.css" layer(components);
+@import "./workspace.css";
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--foreground);
+  --color-popover: var(--card);
+  --color-popover-foreground: var(--foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: #ffffff;
+  --color-secondary: #F5F5F3;
+  --color-secondary-foreground: #242424;
+  --color-muted: #F5F5F3;
+  --color-muted-foreground: var(--muted);
+  --color-accent: #EDEDEB;
+  --color-accent-foreground: #171717;
+  --color-destructive: #C94A4A;
+  --color-border: #E5E5E3;
+  --color-input: #E5E5E3;
+  --color-ring: #389D9B;
+  --radius-sm: 8px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 20px;
+}
